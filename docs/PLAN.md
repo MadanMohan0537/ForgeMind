@@ -26,7 +26,7 @@ Everything below assumes ~9 PM Saturday start. If you start later, cut from the 
 - [ ] Record 60 s of a clean run to `runs/golden.mp4` (phone screen-record or `ffmpeg -i rtsp://127.0.0.1:8554/line -t 60 -c copy runs/golden.mp4`). Replay: `SOURCE=runs/golden.mp4 REPLAY_LOOP=1`.
 - Fallback if RTSP is a fight: Android "IP Webcam" app → `SOURCE=http://<phone>:8080/video`.
 
-### Part 2 — Core (services/core)   owner: ______
+### Part 2 — Core (services/core)   owner: Graeme
 See `docs/CORE.md` for how core behaves, what it promises the other parts, and how to debug it.
 - [x] Read `main.py` orchestrator (`_after_inspection`, `_recovery_flow`) until you can draw it. Then own it.
 - [x] Run `python scripts/synthetic_run.py --mode baseline --fast` and `--mode recovery --fast --auto-human` (with `ROBOT_ADAPTER=mock` for now). Metrics must match `services/core/tests`. — both match the goldens.
