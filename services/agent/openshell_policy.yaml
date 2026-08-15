@@ -1,0 +1,27 @@
+# ForgeMind agent containment policy (DRAFT — adapt to the exact schema in the NemoClaw docs / `nemoclaw policy` output).
+# Intent, in plain words:
+#   ALLOW  the model endpoint (managed inference)                 -> the agent can think
+#   ALLOW  forge-core READ routes + analysis submit route          -> the agent can read the log and hand back analysis
+#   DENY   forge-robot (port 8200) entirely                        -> the agent can never move anything; only the governor can
+#   DENY   all other egress (no internet)                          -> nothing leaves the site
+#   FS     read-only evidence, writable only /workspace/out       -> it cannot alter or delete history
+name: forgemind-analyst
+network:
+  default: deny
+  allow:
+    - host: host.docker.internal        # or the Spark's LAN IP; whatever the sandbox sees the host as
+      port: 8100
+      paths: ["/events", "/metrics/*", "/kits", "/analysis/*", "/policy/denied", "/health"]
+    - host: host.docker.internal
+      port: 8000                        # vLLM (or omit if NemoClaw managed inference is used instead)
+      paths: ["/v1/*"]
+  deny:
+    - host: host.docker.internal
+      port: 8200                        # forge-robot: NEVER reachable from the agent
+    - host: "*"
+filesystem:
+  read_only: ["/workspace/repo", "/workspace/runs/evidence"]
+  writable: ["/workspace/out"]
+env:
+  CORE_URL: http://host.docker.internal:8100
+  ROBOT_URL: http://host.docker.internal:8200      # present on purpose so --demo-denial has something to be blocked from

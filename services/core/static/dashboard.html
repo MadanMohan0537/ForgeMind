@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ForgeMind — process console</title>
+<style>
+  :root{
+    --paper:#EEF0EC; --card:#FFFFFF; --ink:#1B2430; --muted:#5B6470; --line:#CDD2D8;
+    --hold:#D9480F; --ok:#2B8A3E; --wait:#E8A317; --info:#1C5D99; --deny:#7A1F1F;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --sans:system-ui,"Segoe UI",Roboto,sans-serif;
+  }
+  *{box-sizing:border-box} html,body{height:100%} body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 var(--sans)}
+  header{display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;padding:10px 16px;background:var(--ink);color:#fff}
+  header h1{margin:0;font:700 15px/1 var(--mono);letter-spacing:.12em} header h1 small{font-weight:400;letter-spacing:0;color:#B9C1CC;margin-left:10px}
+  .runbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:12px var(--mono)}
+  .runbar .pill{padding:4px 8px;border:1px solid #6B7480;border-radius:2px} .pill.on{border-color:#fff;background:#fff;color:var(--ink)}
+  button{font:inherit;padding:7px 11px;border:1px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer;border-radius:2px}
+  button:hover{background:#F6F7F5} button.dark{background:var(--ink);color:#fff;border-color:#fff} button.hold{background:var(--hold);border-color:var(--hold);color:#fff}
+  button:focus-visible{outline:3px solid var(--wait);outline-offset:2px}
+  main{display:grid;grid-template-columns:minmax(380px,46%) 1fr;gap:14px;padding:14px;height:calc(100% - 52px)}
+  .col{display:flex;flex-direction:column;gap:12px;min-height:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:3px;padding:12px}
+  .card h2{margin:0 0 8px;font:600 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  #feed{width:100%;background:#0F1419;aspect-ratio:16/9;object-fit:contain;border-radius:2px}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font:13px var(--mono)} .kv b{color:var(--muted);font-weight:500}
+  .now{font-size:20px;font-weight:700;margin:4px 0 6px} .now.hold{color:var(--hold)} .now.ok{color:var(--ok)} .now.wait{color:var(--wait)}
+  .tabs{display:flex;gap:2px;border-bottom:2px solid var(--ink)} .tabs button{border:none;border-radius:0;background:transparent;padding:8px 12px;font:600 12px var(--mono);letter-spacing:.06em}
+  .tabs button.on{background:var(--ink);color:#fff} .panel{display:none;overflow:auto;min-height:0;flex:1} .panel.on{display:block}
+  /* kit tickets — the traveler card each kit carries down the line */
+  .tickets{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+  .ticket{border:1px solid var(--line);border-left:6px solid var(--muted);background:#fff;padding:8px 10px;font:12px var(--mono);border-radius:2px}
+  .ticket .id{font-weight:700;font-size:13px} .ticket .st{margin:2px 0;font-weight:600}
+  .ticket.RELEASED,.ticket.QC_PASS,.ticket.AT_ASSEMBLY,.ticket.ASSEMBLED{border-left-color:var(--ok)}
+  .ticket.HELD,.ticket.HUMAN_REVIEW,.ticket.QC_FAIL{border-left-color:var(--hold)}
+  .ticket.RECOVERY_PROPOSED,.ticket.RECOVERING,.ticket.REVERIFYING{border-left-color:var(--wait)}
+  .ticket .parts{color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font:12px var(--mono)} th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--muted);font-weight:600;position:sticky;top:0;background:#fff}
+  .ev.HELD td,.ev.RECOVERY_DENIED td,.ev.HUMAN_REVIEW_REQUESTED td,.ev.RECOVERY_FAILED td,.ev.ROBOT_ERROR td{color:var(--hold)}
+  .ev.KIT_RELEASED td,.ev.RECOVERY_VERIFIED td,.ev.QC_APPROVED td{color:var(--ok)}
+  .ev.POLICY_DENIED td{color:var(--deny);font-weight:600}
+  .hyp{border:1px solid var(--line);border-radius:3px;padding:10px 12px;margin:8px 0;background:#fff}
+  .hyp h3{margin:0 0 4px;font:600 14px var(--sans)} .hyp .conf{height:6px;background:#E5E8EC;border-radius:3px;margin:6px 0} .hyp .conf i{display:block;height:100%;background:var(--info);border-radius:3px}
+  .hyp .ids{font:11px var(--mono);color:var(--muted)} .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  select,input{font:inherit;padding:6px;border:1px solid var(--line);border-radius:2px;background:#fff}
+  .stamp{font:700 11px var(--mono);letter-spacing:.1em;color:var(--deny);border:2px solid var(--deny);padding:2px 6px;display:inline-block;transform:rotate(-2deg)}
+  .muted{color:var(--muted)} .cmp td.pos{color:var(--ok)} .cmp td.neg{color:var(--hold)}
+  @media (max-width:900px){main{grid-template-columns:1fr;height:auto}}
+  @media (prefers-reduced-motion:no-preference){.ticket{transition:border-color .3s}}
+</style>
+</head>
+<body>
+<header>
+  <h1>FORGEMIND<small>local process scientist · DGX Spark</small></h1>
+  <div class="runbar">
+    <span class="pill" id="runpill">no run</span>
+    <button class="dark" onclick="startRun('baseline')">Start baseline</button>
+    <button class="dark" onclick="startRun('recovery')">Start recovery</button>
+    <button class="dark" onclick="startRun('improved')">Start improved</button>
+    <button onclick="endRun()">End run</button>
+    <span class="pill" id="tele">fps – · clear –</span>
+    <span class="pill" id="models"></span>
+  </div>
+  <button class="hold" onclick="estop()">STOP ACTUATOR</button>
+</header>
+<main>
+  <section class="col">
+    <div class="card">
+      <h2>Live · inspection camera</h2>
+      <img id="feed" alt="live annotated feed">
+      <div class="row"><span class="muted">feed url</span><input id="feedurl" style="flex:1;font:12px var(--mono)"><button onclick="setFeed()">Set</button></div>
+    </div>
+    <div class="card">
+      <h2>Now</h2>
+      <div id="now" class="now">Waiting for a kit…</div>
+      <div class="kv" id="nowkv"></div>
+    </div>
+    <div class="card">
+      <h2>Recovery station · actuator</h2>
+      <div class="kv" id="robot"></div>
+    </div>
+  </section>
+  <section class="col">
+    <div class="tabs">
+      <button class="on" data-t="kits">Kits</button><button data-t="events">Events</button><button data-t="metrics">Metrics</button>
+      <button data-t="analysis">Findings</button><button data-t="contain">Containment</button>
+    </div>
+    <div class="panel on card" id="p-kits"><div class="tickets" id="tickets"><span class="muted">No kits yet. Alice taps “Start kit” to begin.</span></div></div>
+    <div class="panel card" id="p-events"><table><thead><tr><th>#</th><th>t</th><th>event</th><th>kit</th><th>detail</th><th>src</th></tr></thead><tbody id="evbody"></tbody></table></div>
+    <div class="panel card" id="p-metrics">
+      <div class="row"><select id="mrun"></select><button onclick="loadMetrics()">Load</button>
+        <span class="muted">compare</span><select id="mbefore"></select><span>→</span><select id="mafter"></select><button onclick="loadCompare()">Compare</button></div>
+      <table><tbody id="mbody"></tbody></table>
+      <h2 style="margin-top:14px">Before → After</h2>
+      <table class="cmp"><thead><tr><th>metric</th><th>before</th><th>after</th><th>Δ</th></tr></thead><tbody id="cbody"></tbody></table>
+      <div id="ir" class="muted"></div>
+    </div>
+    <div class="panel card" id="p-analysis">
+      <div class="row"><select id="arun"></select>
+        <button class="dark" onclick="genHyp()">Generate hypotheses</button><button onclick="genExp()">Propose experiment</button>
+        <span class="muted">verify</span><select id="vbefore"></select><span>→</span><select id="vafter"></select><button onclick="verify()">Verify</button>
+        <span id="abusy" class="muted"></span></div>
+      <div id="hyps"><span class="muted">Generate hypotheses after a run has ended.</span></div>
+      <div id="exp"></div><div id="ver"></div>
+    </div>
+    <div class="panel card" id="p-contain">
+      <p class="muted" style="margin:0 0 8px">Attempts by the sandboxed analyst that OpenShell policy blocked. The agent can read and think; only the deterministic governor can move anything.</p>
+      <table><thead><tr><th>t</th><th>agent</th><th>attempted</th><th>result</th></tr></thead><tbody id="denybody"><tr><td colspan=4 class="muted">No denials logged yet.</td></tr></tbody></table>
+    </div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s); const host=location.hostname||'localhost';
+const feedDefault=`http://${host}:8150/video.mjpg`; $('#feedurl').value=localStorage.feed||feedDefault; setFeed();
+function setFeed(){ localStorage.feed=$('#feedurl').value; $('#feed').src=$('#feedurl').value; }
+let run={run_id:null,mode:null}, kits={}, events=[], runs=[];
+const fmtT=ts=>new Date(ts*1000).toLocaleTimeString([], {hour12:false});
+const short=p=>{ if(!p) return ''; const o={}; for(const k of ['missing','extra','confidence','reasons','action','part','count','escape','reinspection','proposal','error','reason','summary','change','attempted','detail','result','adapter'])
+  if(p[k]!==undefined && p[k]!==null && !(typeof p[k]==='object' && !Object.keys(p[k]).length)) o[k]=(k==='proposal')?p[k].action+' '+(p[k].part||''):p[k];
+  return Object.entries(o).map(([k,v])=>`${k}=${typeof v==='object'?JSON.stringify(v):v}`).join(' ').slice(0,140); };
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on')); $('#p-'+b.dataset.t).classList.add('on'); });
+function renderRun(){ $('#runpill').textContent = run.run_id? `${run.run_id} · ${run.mode}` : 'no run'; $('#runpill').classList.toggle('on',!!run.run_id); }
+function renderKits(){ const t=$('#tickets'); const ks=Object.values(kits).sort((a,b)=>a.kit_id.localeCompare(b.kit_id)); if(!ks.length) return;
+  t.innerHTML = ks.map(k=>`<div class="ticket ${k.state}"><div class="id">${k.kit_id}</div><div class="st">${k.state.replace(/_/g,' ')}</div>
+   <div class="parts">${k.detected&&Object.keys(k.detected).length? `B${k.detected.red_body||0} W${k.detected.black_wheel||0} R${k.detected.blue_roof||0}` : '—'}${Object.keys(k.missing||{}).length? ' · missing '+Object.keys(k.missing).join(','):''}</div>
+   <div class="parts">conf ${k.confidence?(k.confidence*100).toFixed(0)+'%':'–'}${k.retry_count?' · retry '+k.retry_count:''}</div></div>`).join(''); }
+function renderEvents(){ const tb=$('#evbody'); tb.innerHTML = events.slice(-300).reverse().map(e=>`<tr class="ev ${e.event}"><td>${e.id}</td><td>${fmtT(e.ts)}</td><td>${e.event}</td><td>${e.kit_id||''}</td><td>${short(e.payload)}</td><td class="muted">${e.source}</td></tr>`).join('');
+  const den=events.filter(e=>e.event==='POLICY_DENIED'); if(den.length) $('#denybody').innerHTML=den.reverse().map(e=>`<tr><td>${fmtT(e.ts)}</td><td>${e.payload.agent||''}</td><td>${e.payload.attempted||''}</td><td><span class="stamp">DENIED</span> <span class="muted">${(e.payload.detail||'').slice(0,90)}</span></td></tr>`).join(''); }
+function renderNow(){ const ks=Object.values(kits); const active = ks.filter(k=>['ARRIVED','HELD','RECOVERY_PROPOSED','RECOVERING','REVERIFYING','HUMAN_REVIEW'].includes(k.state)).sort((a,b)=>b.kit_id.localeCompare(a.kit_id))[0]
+   || ks.filter(k=>k.state==='RELEASED').sort((a,b)=>b.kit_id.localeCompare(a.kit_id))[0];
+  const n=$('#now'), kv=$('#nowkv'); if(!active){ n.textContent='Waiting for a kit…'; n.className='now'; kv.innerHTML=''; return; }
+  const miss=Object.entries(active.missing||{}).map(([p,q])=>`${q} ${p.replace('_',' ')}`).join(', ');
+  const cls = ['HELD','HUMAN_REVIEW'].includes(active.state)?'hold': active.state==='RELEASED'?'ok':'wait';
+  const msg = {ARRIVED:`${active.kit_id} arrived — counting`, HELD:`${active.kit_id} is incomplete — held`, RECOVERY_PROPOSED:`${active.kit_id}: recovery proposed, governor checking`,
+    RECOVERING:`${active.kit_id}: recovery in progress`, REVERIFYING:`${active.kit_id}: verifying correction`, HUMAN_REVIEW:`${active.kit_id}: needs a human`, RELEASED:`${active.kit_id} cleared for assembly`}[active.state]||active.state;
+  n.textContent=msg; n.className='now '+cls;
+  const d=active.detected||{}; kv.innerHTML=`<b>body</b><span>${d.red_body??'–'} of 1</span><b>wheels</b><span>${d.black_wheel??'–'} of 2</span><b>roof</b><span>${d.blue_roof??'–'} of 1</span><b>missing</b><span>${miss||'none'}</span><b>confidence</b><span>${active.confidence?(active.confidence*100).toFixed(0)+'%':'–'}</span>`; }
+function renderRobot(r){ $('#robot').innerHTML=`<b>state</b><span>${r.state||'?'}</span><b>adapter</b><span>${r.adapter||'?'}</span><b>instruction</b><span>${r.instruction||'—'}</span><b>last</b><span>${r.last_action? (r.last_action.part+' → '+r.last_action.result+' ('+(r.last_action.seconds||'?')+'s)') : '—'}</span>`; }
+async function refreshRuns(){ runs = await (await fetch('/runs')).json(); const opts = runs.map(r=>`<option value="${r.run_id}">${r.run_id}</option>`).join('');
+  for(const id of ['mrun','mbefore','mafter','arun','vbefore','vafter']){ const s=$('#'+id); const cur=s.value; s.innerHTML=opts; if([...s.options].some(o=>o.value===cur)) s.value=cur; } }
+async function refreshState(){ try{ const s=await (await fetch('/state')).json(); run=s.run; renderRun(); renderRobot(s.robot||{}); $('#tele').textContent=`fps ${s.telemetry.fps??'–'} · clear ${s.telemetry.workspace_clear} · queue ${JSON.stringify(s.telemetry.queue||{})}`; $('#models').textContent=`planner ${s.planner} · ${s.llm_model}${s.fast_model!==s.llm_model?' + '+s.fast_model:''}`; }catch(e){} }
+function connect(){ const ws=new WebSocket(`ws://${location.host}/ws`); ws.onmessage=m=>{ const d=JSON.parse(m.data);
+  if(d.type==='snapshot'){ run=d.run; kits={}; d.kits.forEach(k=>kits[k.kit_id]=k); events=d.events; renderRun(); renderKits(); renderEvents(); renderNow(); }
+  else if(d.type==='event'){ if(d.event.run_id!==run.run_id && d.event.event==='RUN_STARTED'){ run={run_id:d.event.run_id,mode:d.event.payload.mode}; kits={}; events=[]; renderRun(); refreshRuns(); }
+    events.push(d.event); if(d.kit) kits[d.kit.kit_id]=d.kit; renderKits(); renderEvents(); renderNow(); }
+  else if(d.type==='telemetry'){ $('#tele').textContent=`fps ${d.telemetry.fps??'–'} · clear ${d.telemetry.workspace_clear} · queue ${JSON.stringify(d.telemetry.queue||{})}`; } };
+  ws.onclose=()=>setTimeout(connect,1500); }
+async function startRun(mode){ await fetch('/runs/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}); await refreshRuns(); await refreshState(); }
+async function endRun(){ const r=await fetch('/runs/end',{method:'POST'}); const j=await r.json(); if(r.ok){ alert(`Run ended: ${j.ended}\n${JSON.stringify(j.metrics,null,1)}`); } await refreshRuns(); await refreshState(); }
+async function estop(){ await fetch('/robot/stop',{method:'POST'}); refreshState(); }
+async function loadMetrics(){ const id=$('#mrun').value; if(!id) return; const m=await (await fetch('/metrics/'+id)).json(); $('#mbody').innerHTML=Object.entries(m).map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='object'?JSON.stringify(v):v??'–'}</td></tr>`).join(''); }
+async function loadCompare(){ const c=await (await fetch(`/metrics/compare/?before=${$('#mbefore').value}&after=${$('#mafter').value}`)).json();
+  const good=new Set(['correct_products','verified_recoveries','throughput_per_min']); $('#cbody').innerHTML=c.rows.map(r=>{ const cls=r.delta==null?'':(good.has(r.metric)? (r.delta>0?'pos':r.delta<0?'neg':'') : (r.delta<0?'pos':r.delta>0?'neg':'')); return `<tr><td>${r.metric}</td><td>${r.before??'–'}</td><td>${r.after??'–'}</td><td class="${cls}">${r.delta??'–'}</td></tr>`; }).join('');
+  $('#ir').textContent = c.intervention_reduction!=null? `Intervention reduction: ${(c.intervention_reduction*100).toFixed(0)}% fewer actuator interventions after the process change.` : ''; }
+function renderAnalysis(a){ const hs=a.hypotheses; $('#hyps').innerHTML = hs? `<p><b>${hs.summary||''}</b></p>`+hs.hypotheses.map(h=>`<div class="hyp"><h3>${h.id} · ${h.title} <span class="muted" style="font-weight:400">· ${h.status}</span></h3><div>${h.explanation}</div><div class="conf"><i style="width:${Math.round(h.confidence*100)}%"></i></div><div class="ids">confidence ${(h.confidence*100).toFixed(0)}% · supports #${h.supporting_event_ids.join(', #')||'—'} · contradicts #${h.contradicting_event_ids.join(', #')||'—'}</div></div>`).join('') : '<span class="muted">No hypotheses yet.</span>';
+  const e=a.experiment; $('#exp').innerHTML = e? `<div class="hyp" style="border-left:6px solid var(--info)"><h3>Recommended experiment</h3><div><b>Change:</b> ${e.change}</div><div><b>Keep unchanged:</b> ${(e.keep_unchanged||[]).join('; ')}</div><div><b>Why:</b> ${e.reason}</div><div><b>Tests:</b> ${e.tests_hypothesis_id} · <b>Expect:</b> ${e.expected_observation} · <b>Watch:</b> ${e.metric_to_watch}</div></div>` : '';
+  const v=a.verification; $('#ver').innerHTML = v? `<div class="hyp" style="border-left:6px solid var(--ok)"><h3>Verification ${v.before} → ${v.after}</h3>`+v.verdicts.map(x=>`<div><b>${x.hypothesis_id}: ${x.verdict.toUpperCase()}</b> — ${x.explanation}</div>`).join('')+`</div>` : ''; }
+async function loadAnalysis(){ const id=$('#arun').value; if(!id) return; renderAnalysis(await (await fetch('/analysis/'+id)).json()); }
+async function genHyp(){ $('#abusy').textContent='thinking…'; const id=$('#arun').value; const r=await fetch('/analysis/hypotheses/'+id,{method:'POST'}); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); loadAnalysis(); }
+async function genExp(){ $('#abusy').textContent='planning…'; const id=$('#arun').value; const r=await fetch('/analysis/experiment/'+id,{method:'POST'}); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); loadAnalysis(); }
+async function verify(){ $('#abusy').textContent='verifying…'; const r=await fetch('/analysis/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({before:$('#vbefore').value,after:$('#vafter').value})}); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); $('#arun').value=$('#vafter').value; loadAnalysis(); }
+$('#arun').onchange=loadAnalysis;
+connect(); refreshRuns(); refreshState(); setInterval(refreshState,3000);
+</script>
+</body>
+</html>
