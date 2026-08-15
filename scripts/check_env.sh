@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
-# One-screen health check. Run it every hour and before recording.
-IP=${IP:-127.0.0.1}
-chk(){ printf "%-28s" "$1"; if curl -fsS -m 3 "$2" >/dev/null 2>&1; then echo "OK   $2"; else echo "DOWN $2"; fi; }
-chk "vLLM (super)"      "http://$IP:8000/v1/models"
-chk "vLLM (cosmos VLM)" "http://$IP:8001/v1/models"
-chk "vLLM (lightning)"  "http://$IP:8002/v1/models"
-chk "core"              "http://$IP:8100/health"
-chk "perception"        "http://$IP:8150/health"
-chk "robot"             "http://$IP:8200/robot/status"
-chk "mediamtx (rtsp)"   "http://$IP:8888/"
-echo; echo "memory:"; free -h | head -2; command -v nvidia-smi >/dev/null && nvidia-smi --query-gpu=memory.used,memory.total --format=csv 2>/dev/null || true
-echo; echo "perception state:"; curl -s -m 3 "http://$IP:8150/state" | python3 -c "import sys,json; s=json.load(sys.stdin); print(' fps',s['fps'],'source_ok',s['source_ok'],'counts',s['counts'],'zone',s['zone_states'].get('inspection_zone'))" 2>/dev/null || echo " (down)"
+# P4 owns this on an hourly cadence all night (per execution plan Section 5).
+# Quick health snapshot of the Spark environment: GPU, memory, and whichever
+# VLM backend (VSS or Cosmos) is supposed to be up.
+set -uo pipefail
+
+echo "=== $(date) ==="
+
+echo "--- GPU ---"
+nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv 2>&1 || echo "nvidia-smi unavailable"
+
+echo "--- Memory ---"
+free -h 2>&1 || vm_stat 2>&1
+
+echo "--- VLM backend (\$VLM_URL) ---"
+if [ -z "${VLM_URL:-}" ]; then
+  echo "VLM_URL not set"
+else
+  curl -sf -m 5 "${VLM_URL%/}/models" && echo "OK: ${VLM_URL}" || echo "UNREACHABLE: ${VLM_URL}"
+fi
+
+echo "--- Disk ---"
+df -h / 2>&1
