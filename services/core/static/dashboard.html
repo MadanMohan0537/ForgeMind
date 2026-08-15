@@ -112,6 +112,12 @@
 </main>
 <script>
 const $=s=>document.querySelector(s); const host=location.hostname||'localhost';
+// Shared token, only needed when core runs with FORGE_TOKEN set. Open the dashboard once
+// as /dashboard?token=... and it is remembered in this browser.
+const _tok = new URLSearchParams(location.search).get('token'); if(_tok) localStorage.forgeToken=_tok;
+const post = (url, body) => fetch(url, {method:'POST',
+  headers:{'Content-Type':'application/json', ...(localStorage.forgeToken?{'X-Forge-Token':localStorage.forgeToken}:{})},
+  ...(body!==undefined?{body:JSON.stringify(body)}:{})});
 const feedDefault=`http://${host}:8150/video.mjpg`; $('#feedurl').value=localStorage.feed||feedDefault; setFeed();
 function setFeed(){ localStorage.feed=$('#feedurl').value; $('#feed').src=$('#feedurl').value; }
 let run={run_id:null,mode:null}, kits={}, events=[], runs=[];
@@ -147,9 +153,9 @@ function connect(){ const ws=new WebSocket(`ws://${location.host}/ws`); ws.onmes
     events.push(d.event); if(d.kit) kits[d.kit.kit_id]=d.kit; renderKits(); renderEvents(); renderNow(); }
   else if(d.type==='telemetry'){ $('#tele').textContent=`fps ${d.telemetry.fps??'–'} · clear ${d.telemetry.workspace_clear} · queue ${JSON.stringify(d.telemetry.queue||{})}`; } };
   ws.onclose=()=>setTimeout(connect,1500); }
-async function startRun(mode){ await fetch('/runs/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})}); await refreshRuns(); await refreshState(); }
-async function endRun(){ const r=await fetch('/runs/end',{method:'POST'}); const j=await r.json(); if(r.ok){ alert(`Run ended: ${j.ended}\n${JSON.stringify(j.metrics,null,1)}`); } await refreshRuns(); await refreshState(); }
-async function estop(){ await fetch('/robot/stop',{method:'POST'}); refreshState(); }
+async function startRun(mode){ await post('/runs/start',{mode}); await refreshRuns(); await refreshState(); }
+async function endRun(){ const r=await post('/runs/end'); const j=await r.json(); if(r.ok){ alert(`Run ended: ${j.ended}\n${JSON.stringify(j.metrics,null,1)}`); } await refreshRuns(); await refreshState(); }
+async function estop(){ await post('/robot/stop'); refreshState(); }
 async function loadMetrics(){ const id=$('#mrun').value; if(!id) return; const m=await (await fetch('/metrics/'+id)).json(); $('#mbody').innerHTML=Object.entries(m).map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='object'?JSON.stringify(v):v??'–'}</td></tr>`).join(''); }
 async function loadCompare(){ const c=await (await fetch(`/metrics/compare/?before=${$('#mbefore').value}&after=${$('#mafter').value}`)).json();
   const good=new Set(['correct_products','verified_recoveries','throughput_per_min']); $('#cbody').innerHTML=c.rows.map(r=>{ const cls=r.delta==null?'':(good.has(r.metric)? (r.delta>0?'pos':r.delta<0?'neg':'') : (r.delta<0?'pos':r.delta>0?'neg':'')); return `<tr><td>${r.metric}</td><td>${r.before??'–'}</td><td>${r.after??'–'}</td><td class="${cls}">${r.delta??'–'}</td></tr>`; }).join('');
@@ -158,9 +164,9 @@ function renderAnalysis(a){ const hs=a.hypotheses; $('#hyps').innerHTML = hs? `<
   const e=a.experiment; $('#exp').innerHTML = e? `<div class="hyp" style="border-left:6px solid var(--info)"><h3>Recommended experiment</h3><div><b>Change:</b> ${e.change}</div><div><b>Keep unchanged:</b> ${(e.keep_unchanged||[]).join('; ')}</div><div><b>Why:</b> ${e.reason}</div><div><b>Tests:</b> ${e.tests_hypothesis_id} · <b>Expect:</b> ${e.expected_observation} · <b>Watch:</b> ${e.metric_to_watch}</div></div>` : '';
   const v=a.verification; $('#ver').innerHTML = v? `<div class="hyp" style="border-left:6px solid var(--ok)"><h3>Verification ${v.before} → ${v.after}</h3>`+v.verdicts.map(x=>`<div><b>${x.hypothesis_id}: ${x.verdict.toUpperCase()}</b> — ${x.explanation}</div>`).join('')+`</div>` : ''; }
 async function loadAnalysis(){ const id=$('#arun').value; if(!id) return; renderAnalysis(await (await fetch('/analysis/'+id)).json()); }
-async function genHyp(){ $('#abusy').textContent='thinking…'; const id=$('#arun').value; const r=await fetch('/analysis/hypotheses/'+id,{method:'POST'}); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); loadAnalysis(); }
-async function genExp(){ $('#abusy').textContent='planning…'; const id=$('#arun').value; const r=await fetch('/analysis/experiment/'+id,{method:'POST'}); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); loadAnalysis(); }
-async function verify(){ $('#abusy').textContent='verifying…'; const r=await fetch('/analysis/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({before:$('#vbefore').value,after:$('#vafter').value})}); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); $('#arun').value=$('#vafter').value; loadAnalysis(); }
+async function genHyp(){ $('#abusy').textContent='thinking…'; const id=$('#arun').value; const r=await post('/analysis/hypotheses/'+id); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); loadAnalysis(); }
+async function genExp(){ $('#abusy').textContent='planning…'; const id=$('#arun').value; const r=await post('/analysis/experiment/'+id); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); loadAnalysis(); }
+async function verify(){ $('#abusy').textContent='verifying…'; const r=await post('/analysis/verify',{before:$('#vbefore').value,after:$('#vafter').value}); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); $('#arun').value=$('#vafter').value; loadAnalysis(); }
 $('#arun').onchange=loadAnalysis;
 connect(); refreshRuns(); refreshState(); setInterval(refreshState,3000);
 </script>

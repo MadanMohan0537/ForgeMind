@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import time
 import traceback
 import uuid
@@ -21,13 +22,14 @@ from pathlib import Path
 from typing import Awaitable, Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from pydantic import BaseModel, ValidationError
 
-from shared.schemas import (REQUIRED_PARTS, ActionProposal, Event, EventType as E, Kit, KitState as S,
-                            RobotRequest, RunMetrics, WorldState)
+from shared.schemas import (REQUIRED_PARTS, ActionProposal, Event, EventType as E, ExperimentPlan,
+                            HypothesisSet, Kit, KitState as S, RobotRequest, RunMetrics,
+                            VerificationVerdict, WorldState)
 from services.core import governor, metrics as M
 from services.core.db import Store
 from services.core.state_machine import IllegalTransition, is_escape, next_state
@@ -43,10 +45,23 @@ except Exception as _ex:  # noqa: BLE001
 
 ROBOT_URL = os.environ.get("ROBOT_URL", "http://127.0.0.1:8200")
 PERCEPTION_URL = os.environ.get("PERCEPTION_URL", "http://127.0.0.1:8150")
-PLANNER = os.environ.get("PLANNER", "llm") if llm is not None else "rule"
 STALL_SECONDS = float(os.environ.get("CORE_STALL_SECONDS", "180"))
 WATCHDOG_INTERVAL = float(os.environ.get("CORE_WATCHDOG_INTERVAL", "5"))
 STATIC = Path(__file__).parent / "static"
+
+# Shared-secret gate for everything that changes state. Unset (the default) means no gate,
+# which is what the stations need on a plain LAN. Set FORGE_TOKEN on the Spark and every
+# page picks it up from its own URL (?token=...), so phones keep working after one scan.
+# This is a wrong-device guard on a hackathon network, not real authentication: a token
+# handed to a browser is readable by anyone holding that browser.
+TOKEN = os.environ.get("FORGE_TOKEN", "").strip()
+CORS_ORIGINS = [o.strip() for o in os.environ.get("FORGE_CORS_ORIGINS", "*").split(",") if o.strip()]
+# Perception, the robot service and the agent all run on the Spark and post to core over
+# loopback without a token. Exempting loopback keeps the gate aimed at what it is for —
+# other devices on the venue network — without making three other services carry a secret.
+# Set FORGE_TRUST_LOOPBACK=0 if you want even same-box callers to authenticate.
+TRUST_LOOPBACK = os.environ.get("FORGE_TRUST_LOOPBACK", "1") != "0"
+LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 # States a kit must not sit in forever. Each is waiting on another service to answer.
 STALLABLE_STATES = {S.HELD, S.RECOVERY_PROPOSED, S.RECOVERING, S.REVERIFYING}
@@ -73,8 +88,26 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="ForgeMind core", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 store = Store()
+
+
+@app.middleware("http")
+async def require_token(request, call_next):
+    """Gate state-changing requests on the shared token, when one is configured.
+
+    Off by default. With FORGE_TOKEN set, a POST must carry it as an X-Forge-Token header
+    or a ?token= query parameter. GETs are never gated — a judge or a teammate loading the
+    dashboard must not need a secret, and reading is harmless. Same-box services posting
+    over loopback are exempt unless FORGE_TRUST_LOOPBACK=0.
+    """
+    if TOKEN and request.method not in ("GET", "HEAD", "OPTIONS"):
+        host = request.client.host if request.client else ""
+        if not (TRUST_LOOPBACK and host in LOOPBACK_HOSTS):
+            supplied = request.headers.get("x-forge-token") or request.query_params.get("token", "")
+            if not secrets.compare_digest(supplied, TOKEN):
+                return JSONResponse({"detail": "missing or bad X-Forge-Token"}, status_code=401)
+    return await call_next(request)
 
 
 # --------------------------------------------------------------------------- #
@@ -91,6 +124,9 @@ class Live:
     last_zone_status_clear: Optional[bool] = None
     last_queue: dict[str, int] = {}
     stall_escalated: set[str] = set()     # kit ids the watchdog has already handed to a human
+    # Switchable at runtime via POST /admin/llm, so bringing a model up mid-night does not
+    # need a restart. Falls back to the rule planner when the LLM client is unavailable.
+    planner: str = os.environ.get("PLANNER", "llm") if llm is not None else "rule"
 
 
 live = Live()
@@ -273,7 +309,7 @@ async def _recovery_flow(kit_id: str, run_id: Optional[str] = None) -> None:
                        extra=kit.extra, retry_count=kit.retry_count, robot_state=rs.get("state", "unknown"))
     # 1. plan (LLM proposes; deterministic rule if it fails)
     proposal: ActionProposal
-    if PLANNER == "llm" and llm is not None:
+    if live.planner == "llm" and llm is not None:
         try:
             proposal = await asyncio.to_thread(llm.propose_action, world)
         except Exception as ex:  # noqa: BLE001
@@ -534,14 +570,50 @@ async def state() -> dict:
     await _robot_status()
     return {"run": {"run_id": live.run_id, "mode": live.mode}, "telemetry": live.telemetry,
             "robot": live.robot_status, "kits": [k.model_dump() for k in store.kits(live.run_id)],
-            "planner": PLANNER, "llm_model": llm.MODEL if llm else None,
-            "fast_model": llm.FAST_MODEL if llm else None}
+            "planner": live.planner, "llm_model": llm.MODEL if llm else None,
+            "fast_model": llm.FAST_MODEL if llm else None, "auth": bool(TOKEN)}
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "run": live.run_id,
+    return {"ok": True, "run": live.run_id, "planner": live.planner,
             "llm": llm.health() if llm else {"ok": False, "error": LLM_IMPORT_ERROR}}
+
+
+# --------------------------------------------------------------------------- #
+# Runtime configuration. Bringing Lightning up at 3 AM should not need a restart.
+# --------------------------------------------------------------------------- #
+class LLMConfigIn(BaseModel):
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    fast_model: Optional[str] = None
+    fast_base_url: Optional[str] = None
+    planner: Optional[str] = None          # llm | rule
+
+
+@app.post("/admin/llm")
+async def admin_llm(cfg: LLMConfigIn) -> dict:
+    """Point core at a different model, or switch the planner, without restarting.
+
+    The model client reads its configuration at import, so before this endpoint existed
+    the only way to move from Super to Lightning was a restart — which meant dropping the
+    run in progress. (A restart is now survivable, since core re-adopts the open run, but
+    it still interrupts a recording.)
+    """
+    if cfg.planner is not None:
+        if cfg.planner not in ("llm", "rule"):
+            raise HTTPException(422, "planner must be 'llm' or 'rule'")
+        if cfg.planner == "llm" and llm is None:
+            raise HTTPException(409, f"cannot use the llm planner: {LLM_IMPORT_ERROR}")
+        live.planner = cfg.planner
+    fields = {k: v for k, v in cfg.model_dump(exclude={"planner"}).items() if v is not None}
+    if fields:
+        _require_llm()
+        llm.reconfigure(**fields)
+    return {"planner": live.planner, "llm_model": llm.MODEL if llm else None,
+            "fast_model": llm.FAST_MODEL if llm else None,
+            "base_url": llm.BASE_URL if llm else None,
+            "health": llm.health() if llm else {"ok": False, "error": LLM_IMPORT_ERROR}}
 
 
 # --------------------------------------------------------------------------- #
@@ -633,18 +705,27 @@ class VerifyIn(BaseModel):
     before: str
     after: str
     hypothesis_id: Optional[str] = None
+    allow_missing_experiment: bool = False   # opt in to an explicitly uncontrolled comparison
 
 
 @app.post("/analysis/verify")
 async def analysis_verify(v: VerifyIn) -> dict:
     _require_llm()
     hs = store.latest_analysis(v.before, "hypotheses") or {}
-    plan = store.latest_analysis(v.before, "experiment") or {}
+    plan = store.latest_analysis(v.before, "experiment")
     hyps = hs.get("hypotheses", [])
     if v.hypothesis_id:
         hyps = [h for h in hyps if h["id"] == v.hypothesis_id]
     if not hyps:
         raise HTTPException(409, "no hypotheses for the before-run")
+    # A verdict with no recorded experiment is not a controlled result: the model would be
+    # handed an empty plan and left to infer what changed between the runs. Refuse by
+    # default, and mark the output plainly when the caller insists.
+    if not plan and not v.allow_missing_experiment:
+        raise HTTPException(409, f"no experiment plan recorded for {v.before}; run "
+                                 f"POST /analysis/experiment/{v.before} first, or pass "
+                                 f"allow_missing_experiment=true for an uncontrolled comparison")
+    plan = plan or {"change": "not recorded", "uncontrolled": True}
     b = M.compute(v.before, store.events(run_id=v.before))
     a = M.compute(v.after, store.events(run_id=v.after))
     out = []
@@ -665,17 +746,57 @@ def analysis_get(run_id: str) -> dict:
 
 
 class SubmitIn(BaseModel):
-    kind: str          # hypotheses | experiment | verification
+    kind: str          # hypotheses | experiment | verification | open_data
     data: dict
+
+
+# What each submitted `kind` must validate against before core stores it. The dashboard
+# renders these straight into the Findings tab, so anything that does not match the schema
+# would blank that tab mid-demo rather than fail visibly here.
+SUBMIT_SCHEMAS: dict[str, type[BaseModel]] = {
+    "hypotheses": HypothesisSet,
+    "experiment": ExperimentPlan,
+}
+SUBMIT_EVENTS = {"hypotheses": E.HYPOTHESES_GENERATED, "experiment": E.EXPERIMENT_PROPOSED,
+                 "verification": E.HYPOTHESIS_VERIFIED}
+# Anything not in SUBMIT_SCHEMAS or here is rejected, so a typo'd kind cannot land in the
+# store as analysis nobody will ever read.
+SUBMIT_FREEFORM = {"verification", "open_data"}
+
+
+def _validate_submission(kind: str, data: dict) -> None:
+    """Reject analysis that does not match the shared contract.
+
+    The agent produces this outside core, possibly from raw model output, so it is
+    untrusted input like any other.
+    """
+    if kind not in SUBMIT_SCHEMAS and kind not in SUBMIT_FREEFORM:
+        raise HTTPException(422, f"unknown analysis kind {kind!r}; "
+                                 f"expected one of {sorted(set(SUBMIT_SCHEMAS) | SUBMIT_FREEFORM)}")
+    if kind in SUBMIT_SCHEMAS:
+        try:
+            SUBMIT_SCHEMAS[kind].model_validate(data)
+        except ValidationError as ex:
+            raise HTTPException(422, f"{kind} does not match the schema: {ex.errors()[:3]}")
+    elif kind == "verification":
+        # Shaped by core's own /analysis/verify: a comparison plus a list of verdicts.
+        verdicts = data.get("verdicts")
+        if not isinstance(verdicts, list) or not verdicts:
+            raise HTTPException(422, "verification must carry a non-empty 'verdicts' list")
+        try:
+            for v in verdicts:
+                VerificationVerdict.model_validate(v)
+        except ValidationError as ex:
+            raise HTTPException(422, f"verdict does not match the schema: {ex.errors()[:3]}")
 
 
 @app.post("/analysis/submit/{run_id}")
 async def analysis_submit(run_id: str, s: SubmitIn) -> dict:
     """The sandboxed agent (NemoClaw/OpenShell) submits analysis it produced itself."""
+    _validate_submission(s.kind, s.data)
     store.save_analysis(run_id, s.kind, time.time(), s.data)
-    kind_ev = {"hypotheses": E.HYPOTHESES_GENERATED, "experiment": E.EXPERIMENT_PROPOSED, "verification": E.HYPOTHESIS_VERIFIED}
-    if s.kind in kind_ev:
-        await emit(kind_ev[s.kind], None, {"submitted_by": "agent"}, source="agent", run_id=run_id)
+    if s.kind in SUBMIT_EVENTS:
+        await emit(SUBMIT_EVENTS[s.kind], None, {"submitted_by": "agent"}, source="agent", run_id=run_id)
     return {"ok": True}
 
 
@@ -686,12 +807,28 @@ class Denial(BaseModel):
     agent: str = "forgemind-agent"
     attempted: str
     detail: str = ""
+    reporter: str = "unverified"     # who says this was denied; see below
 
 
 @app.post("/policy/denied")
-async def policy_denied(d: Denial) -> dict:
-    ev = await emit(E.POLICY_DENIED, None, d.model_dump(), source="openshell")
-    return {"ok": True, "event_id": ev.id}
+async def policy_denied(d: Denial, request: Request) -> dict:
+    """Record a containment denial reported by the sandbox.
+
+    Core cannot verify that OpenShell actually blocked anything — the denial happens
+    inside the sandbox, and this endpoint only hears about it afterwards. So it records
+    what it can actually observe: which host posted the claim, and the reporter the
+    caller named. It must not stamp `source="openshell"` on an unauthenticated POST,
+    which is what it used to do — that fabricated the provenance of the exact evidence
+    the containment demo rests on.
+
+    Treat a row as evidence only when `reporter` is the sandbox and the run log shows the
+    attempted action did not take effect.
+    """
+    payload = d.model_dump()
+    payload["reported_by_host"] = request.client.host if request.client else "unknown"
+    payload["verified_by_core"] = False
+    ev = await emit(E.POLICY_DENIED, None, payload, source=f"report:{d.reporter}")
+    return {"ok": True, "event_id": ev.id, "verified_by_core": False}
 
 
 # --------------------------------------------------------------------------- #
