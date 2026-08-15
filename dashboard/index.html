@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ForgeMind Operations</title><link rel="stylesheet" href="/styles.css"></head>
+<body>
+<main class="shell">
+  <header class="topbar">
+    <div class="brand"><div class="mark">FM</div><div><h1>ForgeMind</h1><div class="subtitle">Observe → Measure → Reason → Act → Verify → Improve</div></div></div>
+    <div class="status-row"><span class="pill live">Perception live</span><span class="pill">Nemotron Lightning 30B · local</span><span class="pill">Governor active</span></div>
+  </header>
+  <section class="grid">
+    <div class="stack">
+      <article class="panel now-card"><div><div class="eyebrow">Now · governed recovery</div><div class="now-message">KIT-023 held before assembly.</div><p class="muted">One black wheel is missing. Approved recovery: add one wheel, then visually reinspect before release.</p></div><div class="status-row" style="justify-content:flex-start"><span class="pill warning">Action proposed</span><span class="pill success">9 policy checks passed</span><span class="pill">Awaiting verification</span></div></article>
+      <section class="metrics" aria-label="Run metrics">
+        <div class="metric"><span class="muted">Throughput</span><strong>8 kits</strong></div><div class="metric"><span class="muted">First-pass yield</span><strong>75%</strong></div><div class="metric"><span class="muted">Recovered</span><strong>1 kit</strong></div><div class="metric"><span class="muted">Held safely</span><strong>1 kit</strong></div>
+      </section>
+      <article class="panel"><h2>Kit tickets</h2><div id="tickets" class="ticket-list"></div></article>
+    </div>
+    <aside class="stack">
+      <article class="panel">
+        <div class="tabs" role="tablist"><button class="tab active" data-tab="findings">Findings</button><button class="tab" data-tab="containment">Containment</button></div>
+        <div id="findings" class="tab-panel"><div class="finding"><span class="eyebrow">Leading hypothesis · 0.84</span><h3>Batch preparation increases missing-part errors</h3><p class="muted">Evidence: KIT-017, KIT-019 and KIT-023 followed three-kit preparation bursts.</p></div><div class="finding"><strong>Controlled experiment</strong><p class="muted">Prepare one kit at a time with a visible checklist; compare 8 kits over the same run duration.</p></div><div class="finding"><strong>Verdict: awaiting improved run</strong><p class="muted">ForgeMind will compare throughput, first-pass yield and recovery count.</p></div></div>
+        <div id="containment" class="tab-panel" hidden><div class="denial"><strong>DENIED</strong><br><span class="muted">Raw joint command—high-level actions only.</span></div><div class="denial"><strong>DENIED</strong><br><span class="muted">Remove extra component—safe grasp not confirmed.</span></div><div class="denial"><strong>DENIED</strong><br><span class="muted">Release incomplete kit—reinspection required.</span></div></div>
+      </article>
+      <article class="panel"><h2>Station controls</h2><nav class="stations"><a class="station-link" href="/station/alice/"><strong>Alice</strong><br><span class="muted">Prepare</span></a><a class="station-link" href="/station/bob/"><strong>Bob</strong><br><span class="muted">Assemble</span></a><a class="station-link" href="/station/charlie/"><strong>Charlie</strong><br><span class="muted">Inspect</span></a><a class="station-link" href="/station/recovery/"><strong>Recovery</strong><br><span class="muted">Correct</span></a></nav></article>
+    </aside>
+  </section>
+</main><script src="/app.js"></script>
+</body></html>
