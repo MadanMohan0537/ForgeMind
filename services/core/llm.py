@@ -39,6 +39,41 @@ class LLMError(RuntimeError):
     pass
 
 
+def reconfigure(base_url: str | None = None, model: str | None = None,
+                fast_model: str | None = None, fast_base_url: str | None = None) -> dict:
+    """Repoint this client at a different endpoint or model at runtime.
+
+    Added by Part 2 so core can switch Super -> Lightning without a restart (core calls
+    this from POST /admin/llm); the module-level configuration above is otherwise fixed at
+    import. Additive only — nothing else in this file changed. P3 owns this module, so
+    move or rename this freely, just tell core.
+
+    Args:
+        base_url: OpenAI-compatible endpoint for the main model.
+        model: served model name for analysis calls.
+        fast_model: served model name for the per-kit action loop.
+        fast_base_url: endpoint for the fast model, if it is served separately.
+
+    Returns:
+        The configuration now in effect.
+    """
+    global BASE_URL, MODEL, FAST_MODEL, FAST_BASE_URL, _client, _fast_client
+    api_key = os.environ.get("LLM_API_KEY", "none")
+    if base_url is not None:
+        BASE_URL = base_url
+        _client = OpenAI(base_url=BASE_URL, api_key=api_key, timeout=120)
+    if model is not None:
+        MODEL = model
+    if fast_model is not None:
+        FAST_MODEL = fast_model
+    if fast_base_url is not None:
+        FAST_BASE_URL = fast_base_url
+    # Rebuild the fast client whenever either endpoint moved, so the two stay consistent.
+    _fast_client = _client if FAST_BASE_URL == BASE_URL else OpenAI(
+        base_url=FAST_BASE_URL, api_key=api_key, timeout=60)
+    return {"base_url": BASE_URL, "model": MODEL, "fast_model": FAST_MODEL, "fast_base_url": FAST_BASE_URL}
+
+
 def _extract_json(text: str) -> dict:
     text = _THINK_RE.sub("", text).strip()
     text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()

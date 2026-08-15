@@ -10,6 +10,7 @@ from typing import Iterable, Optional
 from shared.schemas import Event, EventType, Kit, KitState
 
 DB_PATH = os.environ.get("FORGE_DB", "runs/forgemind.sqlite")
+BUSY_TIMEOUT_SECONDS = float(os.environ.get("FORGE_DB_TIMEOUT", "10"))
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -58,9 +59,16 @@ class Store:
     def __init__(self, path: str = DB_PATH):
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._conn = sqlite3.connect(path, check_same_thread=False, timeout=BUSY_TIMEOUT_SECONDS)
         self._conn.row_factory = sqlite3.Row
         with self._lock:
+            # On the Spark, perception posts events continuously while the dashboard, the
+            # agent poller and the metrics endpoints all read. The default rollback journal
+            # makes readers and the writer block each other, which shows up as
+            # "database is locked" under exactly the load a live run produces.
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute(f"PRAGMA busy_timeout={int(BUSY_TIMEOUT_SECONDS * 1000)}")
+            self._conn.execute("PRAGMA synchronous=NORMAL")     # WAL keeps this crash-safe
             _migrate_kits_key(self._conn)
             self._conn.executescript(_SCHEMA)
             self._conn.commit()

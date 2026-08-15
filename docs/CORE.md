@@ -38,6 +38,7 @@ wrong kit, which is my problem, not yours.
 | dashboard | `GET /state`, `WS /ws` | The socket sends a snapshot (kits + last 200 events) then live events. |
 | dashboard | `GET /metrics/{run_id}`, `GET /metrics/compare?before=&after=` | Both slash forms of `compare` work. |
 | anyone | `POST /runs/resume/{run_id}` | Re-attach to a run core isn't on (see below). |
+| P3 | `POST /admin/llm` | Switch model, endpoint or planner without restarting core. |
 
 ## Environment
 
@@ -45,10 +46,47 @@ wrong kit, which is my problem, not yours.
 ROBOT_URL=http://127.0.0.1:8200      PERCEPTION_URL=http://127.0.0.1:8150
 PLANNER=llm|rule                     FORGE_DB=runs/forgemind.sqlite
 CORE_STALL_SECONDS=180               CORE_WATCHDOG_INTERVAL=5
+FORGE_TOKEN=                         FORGE_TRUST_LOOPBACK=1
+FORGE_CORS_ORIGINS=*                 FORGE_DB_TIMEOUT=10
 ```
 
 `CORE_STALL_SECONDS` must stay above the robot service's `HUMAN_TIMEOUT_SECONDS` (120), or
 the watchdog will call for help while a human is still placing the part.
+
+## The shared token (optional, off by default)
+
+Without `FORGE_TOKEN` core behaves exactly as before: anything on the network can post.
+Set it on the Spark and every state-changing request needs the token:
+
+```bash
+FORGE_TOKEN=spark2026 bash scripts/start_all.sh
+# phones, once each:  http://<spark>:8100/station/alice?token=spark2026
+# dashboard, once:    http://<spark>:8100/dashboard?token=spark2026
+```
+
+- **Reads are never gated.** A judge can open the dashboard, and `check_env.sh` works, with
+  no secret. Reading cannot corrupt a run.
+- **Loopback is exempt** (`FORGE_TRUST_LOOPBACK=1`), so perception, the robot service and
+  the agent keep posting from the Spark without carrying the token. Turning that off means
+  those three services need `X-Forge-Token` headers of their own — do not do it mid-event.
+- Driving core from a laptop: `python scripts/synthetic_run.py --token spark2026`.
+
+This is a wrong-device guard, not authentication: the token is handed to a browser, so
+anyone holding that phone has it. It stops another team's laptop or a stray tab from
+injecting events into your recorded run. It is not what keeps the actuator safe — the
+governor is, and it validates every proposal no matter who submitted it.
+
+## Switching models without a restart
+
+```bash
+curl -X POST localhost:8100/admin/llm -H 'Content-Type: application/json' \
+  -d '{"model":"lightning","base_url":"http://127.0.0.1:8002/v1","fast_model":"lightning"}'
+curl -X POST localhost:8100/admin/llm -d '{"planner":"rule"}' -H 'Content-Type: application/json'
+```
+
+`services/core/llm.py` reads its endpoint and model names at import, so this endpoint calls
+`llm.reconfigure()` to rebuild the client in place. P3 owns that module; the function is
+additive and safe to move, just tell core if you rename it.
 
 ## Run discipline (this is the part that bites at 3 AM)
 
@@ -74,6 +112,15 @@ shows up as `kits_started - kits_inspected`.
 **Verified recovery** = the camera then saw a complete kit. Attempts without verification
 are the honest denominator of `recovery_success_rate`.
 
+**A denial row is a report, not an observation.** `POST /policy/denied` is how the sandbox
+tells core it blocked something; core never witnesses that and cannot confirm it. Every row
+therefore carries `verified_by_core: false`, the host that posted it, and a source of
+`report:<reporter>` — core will not stamp `openshell` on a claim it did not see. Before
+narrating the Containment tab on camera, check that the attempted action genuinely did not
+take effect (no matching `RECOVERY_APPROVED`, no `RobotRequest` in `logs/robot.log`).
+Logging a denial for an action that actually succeeded is the one thing that would make
+this exhibit dishonest.
+
 ## Debugging
 
 ```bash
@@ -96,13 +143,20 @@ python scripts/synthetic_run.py --mode recovery --fast --auto-human
 
 ## Tests
 
-`PYTHONPATH=. python -m pytest -q` → 42 tests, no network, no model, no camera.
+`PYTHONPATH=. python -m pytest -q` → 54 tests, no network, no model, no camera.
+
+Run this on the GN100 itself before the freeze, not just on a laptop. If a timing-sensitive
+test is flaky while the box is also serving a 120B model, stretch the bounds rather than
+loosening the assertion: `FORGE_TEST_TIMEOUT_SCALE=3 python -m pytest -q`.
 
 - `test_governor.py` (9), `test_metrics.py` (4), `test_state_machine.py` (3) — pure logic.
 - `test_orchestrator.py` (21) — the real loop over ASGI with the robot and perception faked:
   hold → recover → verify → release, denials, retry-then-human, robot errors, a dead camera,
   the watchdog, restart/resume, run isolation, and the escape flag matching the metric.
 - `test_store.py` (5) — kit identity across runs, legacy-database migration, event windows.
+- `test_contracts.py` (12) — what core accepts from outside: agent submissions validated
+  against the shared schemas, denial provenance, verification refusing to run without an
+  experiment plan, the token gate, runtime model switching, and WAL journalling.
 
 If you change `shared/schemas.py`, tell everyone first and run this suite; it is the fastest
 check that the contract still holds.

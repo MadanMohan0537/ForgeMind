@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import os
 import time
 from typing import Any, Callable, Optional
 
@@ -78,13 +79,12 @@ def boot(tmp_path, **env) -> Any:
     honest way to get an isolated instance — and it is also exactly what a restart does,
     which is what `test_resume_*` needs.
     """
-    import os
-
     os.environ["FORGE_DB"] = str(tmp_path / "core.sqlite")
-    os.environ.setdefault("PLANNER", "rule")
     os.environ["PLANNER"] = env.pop("planner", "rule")
     os.environ["CORE_STALL_SECONDS"] = str(env.pop("stall_seconds", 3600))
     os.environ["CORE_WATCHDOG_INTERVAL"] = str(env.pop("watchdog_interval", 3600))
+    os.environ["FORGE_TOKEN"] = env.pop("token", "")      # explicit: never inherit between tests
+    os.environ["FORGE_TRUST_LOOPBACK"] = env.pop("trust_loopback", "1")
     import services.core.db as db
     import services.core.main as main
 
@@ -94,13 +94,25 @@ def boot(tmp_path, **env) -> Any:
     return main
 
 
-def client(main: Any) -> httpx.AsyncClient:
-    return httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app), base_url="http://core")
+def client(main: Any, from_host: str = "127.0.0.1") -> httpx.AsyncClient:
+    """A client for the app. `from_host` fakes the caller's address.
+
+    Anything other than loopback stands in for a phone or laptop on the venue network,
+    which is what the shared-token gate is aimed at.
+    """
+    transport = httpx.ASGITransport(app=main.app, client=(from_host, 1234))
+    return httpx.AsyncClient(transport=transport, base_url="http://core")
 
 
-async def until(cond: Callable[[], bool], timeout: float = 3.0) -> bool:
+# Generous by default, and stretchable from the environment. These tests run on the Spark
+# while it is also serving a 120B model, where a background task can be descheduled for a
+# noticeable fraction of a second; a tight bound would fail there for no real reason.
+TIMEOUT_SCALE = float(os.environ.get("FORGE_TEST_TIMEOUT_SCALE", "1"))
+
+
+async def until(cond: Callable[[], bool], timeout: float = 10.0) -> bool:
     """Wait for a background orchestration task to reach a state."""
-    deadline = time.time() + timeout
+    deadline = time.time() + timeout * TIMEOUT_SCALE
     while time.time() < deadline:
         if cond():
             return True
@@ -358,7 +370,7 @@ def test_failed_reinspection_request_is_recorded(tmp_path):
 
 def test_watchdog_escalates_a_stalled_kit(tmp_path):
     """A kit waiting on a service that never answers ends up with a human, not in limbo."""
-    main = boot(tmp_path, stall_seconds=0.3, watchdog_interval=0.05)
+    main = boot(tmp_path, stall_seconds=1.0, watchdog_interval=0.1)
 
     async def scenario() -> None:
         async with main.lifespan(main.app):
@@ -370,7 +382,7 @@ def test_watchdog_escalates_a_stalled_kit(tmp_path):
                 await c.post("/events", json={"event": "RECOVERY_EXECUTED", "kit_id": kit_id, "source": "robot"})
                 assert await kit_state(c, kit_id) == "REVERIFYING"   # perception will never answer
 
-                assert await until(lambda: main.store.kit(kit_id, "r1").state.value == "HUMAN_REVIEW", timeout=5)
+                assert await until(lambda: main.store.kit(kit_id, "r1").state.value == "HUMAN_REVIEW", timeout=20)
                 stalled = [e for e in await events(c, "r1") if e["source"] == "watchdog"]
                 assert stalled and stalled[0]["payload"]["stalled_state"] == "REVERIFYING"
                 assert (await c.get("/metrics/r1")).json()["human_reviews"] == 1

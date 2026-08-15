@@ -30,8 +30,13 @@
 const who = location.pathname.split('/').pop().toLowerCase();
 const $=s=>document.querySelector(s); $('#who').textContent = who.toUpperCase();
 const main=$('#main'); let kits=[], run={}, robot={};
+// Shared token, only needed when core runs with FORGE_TOKEN set. Open the page once as
+// /station/alice?token=... and it is remembered on this phone from then on.
+const tok = new URLSearchParams(location.search).get('token');
+if(tok) localStorage.forgeToken = tok;
+const authHeaders = () => localStorage.forgeToken ? {'X-Forge-Token': localStorage.forgeToken} : {};
 function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),1400); }
-async function act(action, body){ const r=await fetch(`/station/${who}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}); const j=await r.json().catch(()=>({})); toast(r.ok? `${action} ✓ ${j.kit_id||''} ${j.kit_state||''}` : `✗ ${j.detail||r.status}`); refresh(); }
+async function act(action, body){ const r=await fetch(`/station/${who}/${action}`,{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify(body||{})}); const j=await r.json().catch(()=>({})); toast(r.ok? `${action} ✓ ${j.kit_id||''} ${j.kit_state||''}` : (r.status===401? '✗ token needed — reopen this page with ?token=' : `✗ ${j.detail||r.status}`)); refresh(); }
 const layouts = {
   alice: ()=>`<div class="status" id="st">Prepare kits: 1 body · 2 wheels · 1 roof</div>
     <button class="big dark" onclick="act('start')">START KIT</button>

@@ -12,6 +12,7 @@ on /station/recovery (or pass --auto-human to tap it for you).
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 
@@ -28,8 +29,12 @@ def main() -> None:
     ap.add_argument("--fast", action="store_true")
     ap.add_argument("--auto-human", action="store_true", help="tap DONE at the recovery station automatically")
     ap.add_argument("--core", default=CORE)
+    ap.add_argument("--token", default=os.environ.get("FORGE_TOKEN", ""),
+                    help="shared token, only needed when core runs with FORGE_TOKEN set "
+                         "and you are driving it from another machine")
     a = ap.parse_args()
-    c = httpx.Client(base_url=a.core, timeout=30)
+    headers = {"X-Forge-Token": a.token} if a.token else {}
+    c = httpx.Client(base_url=a.core, timeout=30, headers=headers)
     z = 0.05 if a.fast else 1.0
     bad = {3, 7, 11} if a.mode in ("baseline", "recovery") else {8}
 
@@ -54,7 +59,7 @@ def main() -> None:
         if missing and a.mode != "baseline":
             # wait for the recovery loop: planner -> governor -> robot -> RECOVERY_EXECUTED -> reinspection request
             deadline = time.time() + 90
-            executed = False
+            executed, st = False, "?"
             while time.time() < deadline:
                 k = next((k for k in c.get("/kits").json() if k["kit_id"] == kit_id), None)
                 st = k["state"] if k else "?"
