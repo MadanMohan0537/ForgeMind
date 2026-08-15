@@ -6,14 +6,14 @@ no placeholders in the final take.
 
 ## Model
 
-- Reasoning model: Nemotron 32B Lightning (local)
+- Reasoning model: NVIDIA Nemotron Lightning 30B (local)
 - VLM verification: VSS (preferred) / Cosmos (fallback)
 
 ## Numbers to fill in
 
 | Metric | Value |
 |---|---|
-| Nemotron 32B Lightning tokens/s | TBD |
+| Nemotron Lightning 30B tokens/s | TBD |
 | VLM verification latency (per clip) | TBD |
 | Perception pipeline fps | TBD |
 | Memory in use (idle) | TBD |
