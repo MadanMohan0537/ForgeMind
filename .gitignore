@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+runs/*.sqlite
+runs/evidence/*
+runs/agent_out/*
+!runs/evidence/.gitkeep
+data/open/*.zip
+data/open/*.csv
+scripts/mediamtx*
+.venv/
+logs/

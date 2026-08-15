@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ForgeMind · calibrate</title>
+<style>
+  :root { --ink:#1b2430; --paper:#f3f4f2; --line:#c9cdd3; --hold:#d9480f; --ok:#2b8a3e; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  * { box-sizing:border-box } body { margin:0; font:14px/1.45 system-ui,sans-serif; color:var(--ink); background:var(--paper) }
+  header { display:flex; gap:16px; align-items:baseline; padding:12px 16px; border-bottom:2px solid var(--ink) }
+  header h1 { font:600 16px var(--mono); margin:0; letter-spacing:.04em } header span { font:12px var(--mono); color:#555 }
+  main { display:grid; grid-template-columns: 1fr 340px; gap:16px; padding:16px }
+  .stage { position:relative; background:#111; border:1px solid var(--line) } .stage img { display:block; width:100%; }
+  .stage canvas { position:absolute; inset:0; width:100%; height:100%; cursor:crosshair }
+  aside section { border:1px solid var(--line); background:#fff; padding:12px; margin-bottom:12px }
+  h2 { font:600 12px var(--mono); text-transform:uppercase; letter-spacing:.08em; margin:0 0 8px; color:#555 }
+  button { font:inherit; padding:8px 12px; border:1px solid var(--ink); background:#fff; cursor:pointer } button.primary { background:var(--ink); color:#fff }
+  select,input[type=number]{ font:inherit; padding:6px } .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0 }
+  table { width:100%; border-collapse:collapse; font:12px var(--mono) } td,th{ padding:4px 6px; border-bottom:1px solid var(--line); text-align:left }
+  .part { border-top:1px dashed var(--line); padding-top:8px; margin-top:8px } .part b { font-family:var(--mono) }
+  input[type=range]{ width:100% } label { font-size:12px; color:#444 } .live { font:20px var(--mono) }
+</style>
+</head>
+<body>
+<header><h1>FORGEMIND · CALIBRATE</h1><span id="src">source: …</span><span id="fps"></span></header>
+<main>
+  <div class="stage">
+    <img id="snap" src="/snapshot.jpg" alt="live snapshot">
+    <canvas id="cv"></canvas>
+  </div>
+  <aside>
+    <section>
+      <h2>Zone editor</h2>
+      <div class="row">
+        <select id="zone"><option>inspection_zone</option><option>robot_zone</option><option>assembly_queue</option><option value="__new">new…</option></select>
+        <input id="newname" placeholder="zone name" style="display:none">
+      </div>
+      <p style="margin:6px 0;font-size:12px">Click 3+ points on the image, then save. Points are normalized to the frame so any resolution works.</p>
+      <div class="row">
+        <button id="undo">Undo point</button><button id="clear">Clear</button>
+        <button id="save" class="primary">Save zone</button><button id="del">Delete zone</button>
+      </div>
+      <div id="zones" style="font:12px var(--mono);margin-top:6px"></div>
+    </section>
+    <section>
+      <h2>Live counts (inspection zone)</h2>
+      <div class="live" id="counts">—</div>
+      <div id="zstate" style="font:12px var(--mono);color:#555"></div>
+    </section>
+    <section>
+      <h2>Colors (HSV)</h2>
+      <div id="colors"></div>
+      <div class="row"><button id="savecolors" class="primary">Save colors</button></div>
+      <p style="font-size:12px;color:#555;margin:6px 0 0">Lock exposure &amp; white balance on the phone before tuning. Tune until each part reads the true count with the kit still.</p>
+    </section>
+  </aside>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const snap = $('#snap'), cv = $('#cv'), ctx = cv.getContext('2d');
+let zones = {}, colors = {}, pts = [];
+function fit(){ cv.width = snap.clientWidth; cv.height = snap.clientHeight; draw(); }
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  for (const [name, poly] of Object.entries(zones)){
+    ctx.strokeStyle = name==='inspection_zone' ? '#ffb020' : '#9aa'; ctx.lineWidth = 2; ctx.beginPath();
+    poly.forEach(([x,y],i)=> i? ctx.lineTo(x*cv.width,y*cv.height): ctx.moveTo(x*cv.width,y*cv.height)); ctx.closePath(); ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle; ctx.font='12px monospace'; ctx.fillText(name, poly[0][0]*cv.width+4, poly[0][1]*cv.height+14);
+  }
+  ctx.strokeStyle = '#2b8a3e'; ctx.fillStyle='#2b8a3e'; ctx.beginPath();
+  pts.forEach(([x,y],i)=>{ i? ctx.lineTo(x*cv.width,y*cv.height): ctx.moveTo(x*cv.width,y*cv.height); });
+  ctx.stroke(); pts.forEach(([x,y])=>{ ctx.beginPath(); ctx.arc(x*cv.width,y*cv.height,4,0,7); ctx.fill(); });
+}
+cv.addEventListener('click', e=>{ const r=cv.getBoundingClientRect(); pts.push([(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]); draw(); });
+$('#undo').onclick = ()=>{ pts.pop(); draw(); }; $('#clear').onclick = ()=>{ pts=[]; draw(); };
+$('#zone').onchange = ()=>{ $('#newname').style.display = $('#zone').value==='__new' ? '' : 'none'; };
+function zoneName(){ return $('#zone').value==='__new' ? $('#newname').value.trim() : $('#zone').value; }
+$('#save').onclick = async ()=>{ if(pts.length<3) return alert('Need 3+ points'); const name=zoneName(); if(!name) return alert('Name the zone');
+  zones = await (await fetch('/zones',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name, points:pts})})).json(); pts=[]; renderZones(); draw(); };
+$('#del').onclick = async ()=>{ zones = await (await fetch('/zones/'+zoneName(),{method:'DELETE'})).json(); renderZones(); draw(); };
+function renderZones(){ $('#zones').textContent = Object.entries(zones).map(([k,v])=>`${k}: ${v.length} pts`).join(' · '); }
+function renderColors(){
+  const box = $('#colors'); box.innerHTML='';
+  for (const [part, spec] of Object.entries(colors)){
+    const d = document.createElement('div'); d.className='part'; d.innerHTML = `<b>${part}</b>`;
+    spec.ranges.forEach((rg, ri)=>{
+      ['H','S','V'].forEach((ch, ci)=>{
+        const row = document.createElement('div'); row.className='row';
+        row.innerHTML = `<label style="width:64px">r${ri} ${ch}</label>
+          <input type=number min=0 max=255 style="width:64px" value="${rg[0][ci]}" data-p="${part}" data-r="${ri}" data-b="0" data-c="${ci}">
+          <input type=number min=0 max=255 style="width:64px" value="${rg[1][ci]}" data-p="${part}" data-r="${ri}" data-b="1" data-c="${ci}">`;
+        d.appendChild(row);
+      });
+    });
+    const ar = document.createElement('div'); ar.className='row';
+    ar.innerHTML = `<label>min_area</label><input type=number style="width:80px" value="${spec.min_area}" data-p="${part}" data-k="min_area">
+                    <label>max_area</label><input type=number style="width:90px" value="${spec.max_area}" data-p="${part}" data-k="max_area">`;
+    d.appendChild(ar); box.appendChild(d);
+  }
+}
+$('#savecolors').onclick = async ()=>{
+  document.querySelectorAll('#colors input[data-c]').forEach(i=>{ colors[i.dataset.p].ranges[+i.dataset.r][+i.dataset.b][+i.dataset.c] = +i.value; });
+  document.querySelectorAll('#colors input[data-k]').forEach(i=>{ colors[i.dataset.p][i.dataset.k] = +i.value; });
+  colors = await (await fetch('/colors',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(colors)})).json();
+};
+async function poll(){
+  try{ const s = await (await fetch('/state')).json();
+    $('#src').textContent = 'source: '+s.source+(s.source_ok?' ✓':' ✗ '+(s.last_error||''));
+    $('#fps').textContent = 'fps '+s.fps;
+    $('#counts').textContent = Object.entries(s.counts||{}).map(([k,v])=>`${k}=${v}`).join('  ') || '—';
+    const z = (s.zone_states||{}).inspection_zone||{}; $('#zstate').textContent = `zone ${z.state||'-'} moving=${z.moving} occupied=${z.occupied} clear=${s.workspace_clear} inspections=${s.inspections}`;
+  }catch(e){}
+  snap.src = '/snapshot.jpg?'+Date.now();
+}
+(async ()=>{ zones = await (await fetch('/zones')).json(); colors = await (await fetch('/colors')).json(); renderZones(); renderColors();
+  snap.onload = fit; window.onresize = fit; setInterval(poll, 700); })();
+</script>
+</body>
+</html>

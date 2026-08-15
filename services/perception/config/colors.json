@@ -1,0 +1,6 @@
+{
+  "_comment": "HSV ranges (OpenCV: H 0-180, S 0-255, V 0-255). Several ranges per part are OR-ed (red wraps around). Areas are in pixels at FRAME_WIDTH.",
+  "red_body":    {"ranges": [[[0, 110, 70], [8, 255, 255]], [[170, 110, 70], [180, 255, 255]]], "min_area": 900, "max_area": 80000},
+  "blue_roof":   {"ranges": [[[95, 110, 60], [130, 255, 255]]], "min_area": 500, "max_area": 60000},
+  "black_wheel": {"ranges": [[[0, 0, 0], [180, 255, 60]]], "min_area": 250, "max_area": 12000, "circularity_min": 0.55}
+}

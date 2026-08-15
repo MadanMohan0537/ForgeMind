@@ -1,0 +1,6 @@
+{
+  "_comment": "Normalized [x,y] polygon points (0-1 of frame width/height). Edit at http://<spark>:8150/calibrate",
+  "inspection_zone": [[0.35, 0.30], [0.65, 0.30], [0.65, 0.70], [0.35, 0.70]],
+  "robot_zone": [[0.35, 0.05], [0.65, 0.05], [0.65, 0.28], [0.35, 0.28]],
+  "assembly_queue": [[0.68, 0.30], [0.95, 0.30], [0.95, 0.70], [0.68, 0.70]]
+}

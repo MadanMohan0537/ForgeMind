@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>ForgeMind station</title>
+<style>
+  :root{--paper:#EEF0EC;--ink:#1B2430;--muted:#5B6470;--line:#CDD2D8;--hold:#D9480F;--ok:#2B8A3E;--wait:#E8A317;--mono:ui-monospace,Menlo,Consolas,monospace}
+  *{box-sizing:border-box} body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.4 system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+  header{padding:14px 16px;background:var(--ink);color:#fff;font:700 15px var(--mono);letter-spacing:.1em;display:flex;justify-content:space-between}
+  header small{font-weight:400;letter-spacing:0;color:#B9C1CC}
+  main{flex:1;display:flex;flex-direction:column;gap:12px;padding:14px}
+  .status{border-radius:4px;padding:16px;font-weight:700;font-size:22px;text-align:center;background:#fff;border:2px solid var(--line)}
+  .status.hold{background:var(--hold);color:#fff;border-color:var(--hold)} .status.ok{background:var(--ok);color:#fff;border-color:var(--ok)} .status.wait{background:var(--wait);color:#1B2430;border-color:var(--wait)}
+  .status small{display:block;font-weight:400;font-size:14px;margin-top:4px;opacity:.9}
+  button.big{font:700 22px/1.2 system-ui;padding:26px 16px;border-radius:6px;border:2px solid var(--ink);background:#fff;color:var(--ink);width:100%}
+  button.big.dark{background:var(--ink);color:#fff} button.big.ok{background:var(--ok);border-color:var(--ok);color:#fff} button.big.hold{background:var(--hold);border-color:var(--hold);color:#fff}
+  button.big:active{transform:scale(.98)} button:focus-visible{outline:3px solid var(--wait)}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .log{font:13px var(--mono);color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:4px;padding:10px;max-height:32vh;overflow:auto}
+  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:4px;font:14px var(--mono);opacity:0;transition:opacity .2s}
+  .toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header><span id="who">STATION</span><small id="run">no run</small></header>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+<script>
+const who = location.pathname.split('/').pop().toLowerCase();
+const $=s=>document.querySelector(s); $('#who').textContent = who.toUpperCase();
+const main=$('#main'); let kits=[], run={}, robot={};
+function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),1400); }
+async function act(action, body){ const r=await fetch(`/station/${who}/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}); const j=await r.json().catch(()=>({})); toast(r.ok? `${action} ✓ ${j.kit_id||''} ${j.kit_state||''}` : `✗ ${j.detail||r.status}`); refresh(); }
+const layouts = {
+  alice: ()=>`<div class="status" id="st">Prepare kits: 1 body · 2 wheels · 1 roof</div>
+    <button class="big dark" onclick="act('start')">START KIT</button>
+    <button class="big" onclick="act('sent')">SENT TO INSPECTION</button>
+    <div class="log" id="log"></div>`,
+  bob: ()=>`<div class="status" id="st">Waiting…</div>
+    <button class="big dark" onclick="act('received')">RECEIVED KIT</button>
+    <button class="big" onclick="act('done')">CAR DONE</button>
+    <div class="log" id="log"></div>`,
+  charlie: ()=>`<div class="status" id="st">Inspect the finished car</div>
+    <div class="grid"><button class="big ok" onclick="act('approve')">APPROVE</button><button class="big hold" onclick="act('reject')">REJECT</button></div>
+    <div class="log" id="log"></div>`,
+  recovery: ()=>`<div class="status" id="st">Recovery station idle</div>
+    <button class="big ok" id="donebtn" onclick="act('done')" disabled>DONE — part placed</button>
+    <button class="big" onclick="act('resolved')">RESOLVED BY HUMAN (kit under review)</button>
+    <div class="log" id="log"></div>`,
+};
+main.innerHTML = (layouts[who]||(()=>`<div class="status">Unknown station "${who}". Use /station/alice, /station/bob, /station/charlie or /station/recovery.</div>`))();
+function paint(){
+  $('#run').textContent = run.run_id? `${run.run_id} · ${run.mode}` : 'no run';
+  const st=$('#st'); if(!st) return;
+  const byState = s=>kits.filter(k=>k.state===s);
+  const held = kits.filter(k=>['HELD','RECOVERY_PROPOSED','RECOVERING','REVERIFYING','HUMAN_REVIEW'].includes(k.state));
+  if(who==='alice'){ const prep=byState('PREPARING').length, sent=byState('SENT').length; st.className='status'; st.innerHTML=`Kits started: ${kits.length}<small>${prep} preparing · ${sent} sent, waiting for camera</small>`; }
+  if(who==='bob'){ const rel=byState('RELEASED'); const mine=kits.filter(k=>k.state==='AT_ASSEMBLY').length;
+    if(run.mode==='baseline'){ st.className='status'; st.innerHTML=`Baseline: take the next kit<small>${mine} on your bench</small>`; }
+    else if(rel.length){ st.className='status ok'; st.innerHTML=`${rel[0].kit_id} cleared — take it<small>${rel.length} released · ${mine} on your bench</small>`; }
+    else if(held.length){ st.className='status hold'; st.innerHTML=`HOLD — ${held[0].kit_id} ${held[0].state.replace(/_/g,' ').toLowerCase()}<small>do not take it yet</small>`; }
+    else { st.className='status wait'; st.innerHTML=`No kit ready<small>${mine} on your bench</small>`; } }
+  if(who==='charlie'){ const q=kits.filter(k=>['ASSEMBLED','AT_ASSEMBLY'].includes(k.state)); st.className='status'; st.innerHTML=`${q.length? q[0].kit_id+' ready for QC':'Nothing to inspect'}<small>${byState('QC_PASS').length} approved · ${byState('QC_FAIL').length} rejected</small>`; }
+  if(who==='recovery'){ const b=$('#donebtn');
+    if(robot.state==='waiting_human' && robot.instruction){ st.className='status hold'; st.innerHTML=`${robot.instruction}<small>governor approved · camera will verify after you tap DONE</small>`; b.disabled=false; }
+    else if(held.length && held[0].state==='HUMAN_REVIEW'){ st.className='status wait'; st.innerHTML=`${held[0].kit_id} needs a human<small>fix the kit, keep it in the zone, then tap RESOLVED</small>`; b.disabled=true; }
+    else if(robot.state==='moving'||robot.state==='done'){ st.className='status wait'; st.innerHTML=`Actuator ${robot.state}`; b.disabled=true; }
+    else { st.className='status'; st.innerHTML=`Recovery station idle<small>adapter: ${robot.adapter||'?'}</small>`; b.disabled=true; } }
+  const mine = {alice:['PREPARING','SENT'], bob:['RELEASED','AT_ASSEMBLY'], charlie:['ASSEMBLED','QC_PASS','QC_FAIL'], recovery:['HELD','RECOVERING','REVERIFYING','HUMAN_REVIEW']}[who]||[];
+  $('#log').innerHTML = kits.filter(k=>mine.includes(k.state)).slice(-12).reverse().map(k=>`${k.kit_id} · ${k.state}${Object.keys(k.missing||{}).length?' · missing '+Object.keys(k.missing).join(','):''}`).join('<br>') || '<span>—</span>';
+}
+async function refresh(){ try{ const s=await (await fetch('/state')).json(); kits=s.kits; run=s.run; robot=s.robot||{}; paint(); }catch(e){} }
+refresh(); setInterval(refresh, 1200);
+</script>
+</body>
+</html>
