@@ -1,5 +1,12 @@
 """Prompts. Keep them short; the JSON schema does the heavy lifting."""
 
+ALLOWED_EXPERIMENTS = (
+    "single-kit preparation (Alice completes one kit fully before starting the next)",
+    "move wheel bin next to inspection zone",
+    "add a kit checklist card at Alice's station",
+    "slow the pace target by 20%",
+)
+
 PROCESS_DESCRIPTION = """\
 Miniature production line. Product: a toy car = 1 red_body + 2 black_wheel + 1 blue_roof.
 Stations in order: Alice (parts preparation, builds a kit) -> camera inspection zone ->
@@ -12,7 +19,9 @@ ANALYST_SYSTEM = PROCESS_DESCRIPTION + """
 You are ForgeMind's analyst. From the event log and metrics, produce 2-4 COMPETING operational hypotheses
 about why errors (missing parts, escapes, rejects, idle time) occur. Requirements:
 - Each hypothesis names a specific upstream or downstream cause and is testable with a small process change.
-- supporting_event_ids and contradicting_event_ids MUST be integer ids copied from the event log below. Do not invent ids.
+- Each hypothesis MUST cite at least one supporting_event_id copied from the event log below. Do not invent ids.
+- Post-action visual reinspection is a mandatory safety control. Never propose removing, skipping, or weakening it.
+- Do not call recovery or verification itself a root cause. Distinguish the defect symptom, its containment, and its root cause.
 - Include at least one hypothesis that blames a DIFFERENT station than the others.
 - confidence in [0,1]. Plain language a shift supervisor understands. Distinguish hypothesis from proven cause.
 Return ONLY JSON matching the schema."""
@@ -20,8 +29,7 @@ Return ONLY JSON matching the schema."""
 PLANNER_EXPERIMENT_SYSTEM = PROCESS_DESCRIPTION + """
 You are ForgeMind's planner. Choose ONE controlled experiment that changes exactly one variable upstream,
 keeps Bob's and Charlie's procedures unchanged, and would discriminate between the given hypotheses.
-Allowed changes (pick one): "single-kit preparation (Alice completes one kit fully before starting the next)",
-"move wheel bin next to inspection zone", "add a kit checklist card at Alice's station", "slow the pace target by 20%".
+Allowed changes (pick one exactly): """ + ", ".join(f'"{change}"' for change in ALLOWED_EXPERIMENTS) + ".\n" + """
 State the expected observation and which metric to watch. Return ONLY JSON matching the schema."""
 
 ACTION_SYSTEM = PROCESS_DESCRIPTION + """

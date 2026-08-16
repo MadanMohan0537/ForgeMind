@@ -33,11 +33,15 @@ http = httpx.Client(timeout=30.0)
 
 # ---- tools the agent is allowed to use ------------------------------------------
 def get_events(run_id: str) -> list[Event]:
-    return [Event.model_validate(e) for e in http.get(f"{CORE_URL}/events", params={"run_id": run_id}).json()]
+    response = http.get(f"{CORE_URL}/events", params={"run_id": run_id})
+    response.raise_for_status()
+    return [Event.model_validate(e) for e in response.json()]
 
 
 def get_metrics(run_id: str) -> RunMetrics:
-    return RunMetrics.model_validate(http.get(f"{CORE_URL}/metrics/{run_id}").json())
+    response = http.get(f"{CORE_URL}/metrics/{run_id}")
+    response.raise_for_status()
+    return RunMetrics.model_validate(response.json())
 
 
 def submit(run_id: str, kind: str, data: dict) -> None:
@@ -47,7 +51,10 @@ def submit(run_id: str, kind: str, data: dict) -> None:
 
 def report_denial(attempted: str, detail: str) -> None:
     try:
-        http.post(f"{CORE_URL}/policy/denied", json={"agent": "forgemind-analyst", "attempted": attempted, "detail": detail})
+        http.post(f"{CORE_URL}/policy/denied", json={
+            "agent": "forgemind-analyst", "attempted": attempted,
+            "detail": detail, "reporter": "openshell",
+        }).raise_for_status()
     except Exception as ex:  # noqa: BLE001
         print(f"[agent] could not report denial: {ex}")
 
@@ -69,11 +76,18 @@ def analyze(run_id: str) -> None:
 
 def watch(poll_seconds: float = 5.0) -> None:
     seen: set[str] = set()
-    last_id = 0
-    print("[agent] watching for finished runs …")
+    last_id: int | None = None
     while True:
         try:
-            evs = http.get(f"{CORE_URL}/events", params={"since_id": last_id, "limit": 500}).json()
+            if last_id is None:
+                latest = http.get(f"{CORE_URL}/events", params={"limit": 1, "tail": True})
+                latest.raise_for_status()
+                current = latest.json()
+                last_id = current[-1]["id"] if current else 0
+                print(f"[agent] watching for finished runs after event #{last_id}")
+            response = http.get(f"{CORE_URL}/events", params={"since_id": last_id, "limit": 500})
+            response.raise_for_status()
+            evs = response.json()
             for e in evs:
                 last_id = max(last_id, e["id"])
                 if e["event"] == "RUN_ENDED" and e["run_id"] not in seen:
@@ -92,15 +106,25 @@ def demo_denial() -> None:
         ("GET https://example.com (internet egress)", lambda: http.get("https://example.com", timeout=5)),
         ("write outside workspace", lambda: Path("/etc/forgemind_should_fail").write_text("x")),
     ]
+    escaped: list[str] = []
     for name, fn in attempts:
         try:
             r = fn()
-            detail = f"UNEXPECTEDLY SUCCEEDED: {getattr(r, 'status_code', r)}"
+            status = getattr(r, "status_code", None)
+            if status in (401, 403):
+                detail = f"blocked: HTTP {status}"
+                print(f"[agent] {name}: {detail}")
+                report_denial(name, detail)
+                continue
+            detail = f"UNEXPECTEDLY SUCCEEDED: {status if status is not None else r}"
+            escaped.append(name)
             print(f"[agent] {name}: {detail}  <-- policy is NOT containing this")
         except Exception as ex:  # noqa: BLE001
             detail = f"blocked: {type(ex).__name__}: {str(ex)[:120]}"
             print(f"[agent] {name}: {detail}")
-        report_denial(name, detail)
+            report_denial(name, detail)
+    if escaped:
+        raise RuntimeError(f"containment demo failed; {len(escaped)} attempt(s) escaped: {', '.join(escaped)}")
 
 
 if __name__ == "__main__":

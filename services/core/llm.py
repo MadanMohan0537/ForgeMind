@@ -6,7 +6,8 @@ Env:
   LLM_FAST_MODEL optional; if set, the per-kit action loop uses this model (e.g. "lightning")
   LLM_FAST_BASE_URL optional; if Lightning is served on another port (e.g. http://127.0.0.1:8002/v1)
   LLM_API_KEY    default "none"
-  LLM_THINK_MODE "kwarg" (chat_template_kwargs.enable_thinking) | "tag" (/think, /no_think in system prompt) | "off"
+  LLM_THINK_MODE "kwarg" (chat_template_kwargs.enable_thinking) | "tag" (/think, /no_think in system prompt)
+                 | "ollama" (native think=false and reasoning_effort=none) | "off"
 """
 from __future__ import annotations
 
@@ -97,6 +98,11 @@ def chat_json(system: str, user: str, schema: Type[T], *, model: str | None = No
         extra["chat_template_kwargs"] = {"enable_thinking": thinking}
     elif THINK_MODE == "tag":
         sys_prompt = ("/think\n" if thinking else "/no_think\n") + system
+    elif THINK_MODE == "ollama":
+        # Ollama exposes reasoning separately and may exhaust max_tokens before
+        # writing the schema-constrained answer into message.content. Its native
+        # think flag plus reasoning_effort=none keeps this path deterministic.
+        extra["think"] = False
     js = schema.model_json_schema()
     attempts = [
         {"response_format": {"type": "json_schema", "json_schema": {"name": schema.__name__, "schema": js}}},
@@ -108,6 +114,8 @@ def chat_json(system: str, user: str, schema: Type[T], *, model: str | None = No
         kwargs = dict(model=model, temperature=temperature, max_tokens=max_tokens,
                       messages=[{"role": "system", "content": sys_prompt},
                                 {"role": "user", "content": user + "\n\nReturn ONLY JSON matching this schema:\n" + json.dumps(js)}])
+        if THINK_MODE == "ollama":
+            kwargs["reasoning_effort"] = "none"
         body = dict(extra)
         if "extra_body" in a:
             body.update(a["extra_body"])
@@ -144,16 +152,31 @@ def generate_hypotheses(run_id: str, events, metrics: RunMetrics, valid_ids: set
     user = f"RUN {run_id}\nMETRICS (computed by code):\n{metrics.model_dump_json(indent=1)}\n\nEVENT LOG:\n{P.event_digest(events)}"
     hs = chat_json(P.ANALYST_SYSTEM, user, HypothesisSet, thinking=True, max_tokens=3000)
     hs.run_id = run_id
-    # Grounding check: drop citations that don't exist. This is code, not the model, keeping the model honest.
+    # Grounding is a code-enforced contract: invalid citations and duplicate IDs do
+    # not survive, and an unsupported hypothesis is never submitted as evidence.
+    grounded = []
+    seen_hypothesis_ids: set[str] = set()
     for h in hs.hypotheses:
-        h.supporting_event_ids = [i for i in h.supporting_event_ids if i in valid_ids]
-        h.contradicting_event_ids = [i for i in h.contradicting_event_ids if i in valid_ids]
+        h.supporting_event_ids = list(dict.fromkeys(i for i in h.supporting_event_ids if i in valid_ids))
+        h.contradicting_event_ids = list(dict.fromkeys(i for i in h.contradicting_event_ids if i in valid_ids))
+        if h.supporting_event_ids and h.id not in seen_hypothesis_ids:
+            grounded.append(h)
+            seen_hypothesis_ids.add(h.id)
+    hs.hypotheses = grounded
+    if len(hs.hypotheses) < 2:
+        raise LLMError("model returned fewer than two distinct, source-grounded hypotheses")
     return hs
 
 
 def plan_experiment(hyps: HypothesisSet, metrics: RunMetrics) -> ExperimentPlan:
     user = f"HYPOTHESES:\n{hyps.model_dump_json(indent=1)}\n\nMETRICS:\n{metrics.model_dump_json(indent=1)}"
-    return chat_json(P.PLANNER_EXPERIMENT_SYSTEM, user, ExperimentPlan, thinking=True, max_tokens=1200)
+    plan = chat_json(P.PLANNER_EXPERIMENT_SYSTEM, user, ExperimentPlan, thinking=True, max_tokens=1200)
+    if plan.change not in P.ALLOWED_EXPERIMENTS:
+        raise LLMError(f"experiment change is outside the allowlist: {plan.change!r}")
+    valid_hypothesis_ids = {h.id for h in hyps.hypotheses}
+    if plan.tests_hypothesis_id not in valid_hypothesis_ids:
+        raise LLMError(f"experiment references unknown hypothesis: {plan.tests_hypothesis_id!r}")
+    return plan
 
 
 def propose_action(world: WorldState, timeout: float = 15.0) -> ActionProposal:
