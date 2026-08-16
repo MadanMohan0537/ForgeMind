@@ -13,7 +13,8 @@ Unverified items are labelled explicitly and must not be claimed on camera.
 | Metric | Value |
 |---|---|
 | Nemotron 3.5 Lightning tokens/s | 68.69 observed (256 tokens / 3.727 s) |
-| VLM verification latency (per clip) | 6.26 s on a 2 s, 640x480 MP4 |
+| VLM verification latency (per clip) | 6.26 s on the original 2 s, 640x480 sample; 2.45 s independent synthetic smoke test |
+| VLM image latency | 5.02 s on a synthetic 640x480 JPEG |
 | Perception pipeline fps | Pending a camera/replay measurement; live value is exposed by `/state` |
 | Memory before Cosmos load | 33 GiB used |
 | Memory with Nemotron and Cosmos loaded | 82 GiB used; 38 GiB available |
