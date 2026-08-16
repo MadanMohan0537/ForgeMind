@@ -8,6 +8,8 @@ export ROBOT_ADAPTER="${ROBOT_ADAPTER:-human}"
 export PLANNER="${PLANNER:-llm}"
 export LLM_BASE_URL="${LLM_BASE_URL:-http://127.0.0.1:8000/v1}"
 export LLM_MODEL="${LLM_MODEL:-super}"
+export VLM_URL="${VLM_URL:-http://127.0.0.1:8001/v1}"
+export VLM_MODEL="${VLM_MODEL:-cosmos}"
 mkdir -p logs
 uvicorn services.core.main:app --host 0.0.0.0 --port 8100 > logs/core.log 2>&1 &   P1=$!
 uvicorn services.robot.main:app --host 0.0.0.0 --port 8200 > logs/robot.log 2>&1 & P2=$!

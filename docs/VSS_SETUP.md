@@ -1,47 +1,41 @@
 # VSS / Cosmos Setup (P4)
 
-## 1. NGC access
+## Preferred path: VSS blueprint
 
-1. Get an API key from https://ngc.nvidia.com (Setup → API Key → Generate Personal Key).
-2. On the GN100/Spark:
-   ```bash
-   export NGC_API_KEY="<your key>"
-   ngc config set
-   ```
+VSS needs an NVIDIA NGC account and a personal API key. On the Spark, run:
 
-## 2. Preferred path: VSS blueprint
+```bash
+ngc config set
+```
 
-Pull and run the VSS blueprint per NVIDIA's DGX Spark VSS playbook
-(build.nvidia.com — search "Video Search and Summarization"). This is a
-long, mostly-unattended pull — start it as early as possible.
+Enter the key only at the interactive prompt. Do not paste it into shell
+history, documentation, `.env` files, or Git.
 
-Once it's serving, point perception at it:
+Run the VSS blueprint using NVIDIA's DGX Spark VSS playbook. Once it serves an
+OpenAI-compatible endpoint, configure perception:
+
 ```bash
 export VLM_URL="http://127.0.0.1:<vss-port>/v1"
 export VLM_MODEL="<vss-model-name>"
 ```
 
-**Checkpoint at 1:00 AM:** ask VSS a question about a sample clip. If it
-answers, keep going. If not, stop fighting it and fall back immediately.
+## Validated fallback: local Cosmos
 
-## 3. Fallback: Cosmos
-
-The DGX Spark uses the locally downloaded Cosmos Reason2 8B checkpoint with the existing vLLM container. No additional NGC pull is required.
+The tested Spark uses the Cosmos Reason2 8B checkpoint already on disk and the
+existing vLLM image. It does not need an NGC key or an additional model pull.
 
 ```bash
 bash scripts/serve_cosmos.sh
-```
-
-Then:
-```bash
 export VLM_URL="http://127.0.0.1:8001/v1"
 export VLM_MODEL="cosmos"
 ```
 
-Either path — VSS or Cosmos — gets `services/perception/verify.py`'s
-`vss_ask_video()` a working backend; the client code is identical either way.
+The container is persistent, bound to loopback only, and restarts unless
+stopped. `serve_cosmos.sh` is idempotent and waits for `/v1/models` to respond.
 
-## 4. Verify the wiring
+## Verify the wiring
+
+Use a short MP4 clip:
 
 ```bash
 python -c "
@@ -50,7 +44,12 @@ print(vss_ask_video('runs/golden.mp4', 'Is there a hand in the robot zone?'))
 "
 ```
 
-## 5. Hourly health check
+Perception reads the same environment variables and emits `VLM_VERIFICATION`
+events for uncertain, incomplete, and reinspection results. The registered VSS
+alert descriptions are `kit placed in inspection zone` and
+`hand in robot zone`.
+
+## Hourly health check
 
 ```bash
 bash scripts/check_env.sh

@@ -1,26 +1,48 @@
 #!/usr/bin/env bash
-# P4 owns this on an hourly cadence all night (per execution plan Section 5).
-# Quick health snapshot of the Spark environment: GPU, memory, and whichever
-# VLM backend (VSS or Cosmos) is supposed to be up.
+# One-screen Spark health snapshot. P4 runs this hourly and before recording.
 set -uo pipefail
 
+IP="${IP:-127.0.0.1}"
+VLM_HEALTH_URL="${VLM_URL:-http://${IP}:8001/v1}"
+
+check() {
+  printf "%-28s" "$1"
+  if curl -fsS -m 3 "$2" >/dev/null 2>&1; then
+    echo "OK   $2"
+  else
+    echo "DOWN $2"
+  fi
+}
+
 echo "=== $(date) ==="
+check "vLLM (super)"      "http://${IP}:8000/v1/models"
+check "VLM (VSS/Cosmos)" "${VLM_HEALTH_URL%/}/models"
+check "vLLM (lightning)"  "http://${IP}:8002/v1/models"
+check "Ollama"            "http://${IP}:11434/api/tags"
+check "core"              "http://${IP}:8100/health"
+check "perception"        "http://${IP}:8150/health"
+check "robot"             "http://${IP}:8200/robot/status"
+check "mediamtx (RTSP)"   "http://${IP}:8888/"
 
-echo "--- GPU ---"
-# GB10's unified memory means memory.used/memory.total often report N/A via
-# --query-gpu; fall back to plain nvidia-smi output which shows it correctly.
-nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv 2>&1 || echo "nvidia-smi unavailable"
-nvidia-smi 2>&1 | head -20 || true
-
-echo "--- Memory ---"
-free -h 2>&1 || vm_stat 2>&1
-
-echo "--- VLM backend (\$VLM_URL) ---"
-if [ -z "${VLM_URL:-}" ]; then
-  echo "VLM_URL not set"
+echo
+echo "GPU:"
+if command -v nvidia-smi >/dev/null; then
+  nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv 2>&1 || true
+  nvidia-smi 2>&1 | head -20 || true
 else
-  curl -sf -m 5 "${VLM_URL%/}/models" && echo "OK: ${VLM_URL}" || echo "UNREACHABLE: ${VLM_URL}"
+  echo "nvidia-smi unavailable"
 fi
 
-echo "--- Disk ---"
-df -h / 2>&1
+echo
+echo "memory:"
+free -h 2>&1 | head -2 || true
+
+echo
+echo "disk:"
+df -h / 2>&1 | tail -1 || true
+
+echo
+echo "perception state:"
+curl -s -m 3 "http://${IP}:8150/state" | python3 -c \
+  "import sys,json; s=json.load(sys.stdin); print(' fps',s['fps'],'source_ok',s['source_ok'],'counts',s['counts'],'zone',s['zone_states'].get('inspection_zone'),'vlm',s['vlm_available'])" \
+  2>/dev/null || echo " (down)"
