@@ -30,7 +30,8 @@ from pydantic import BaseModel, ValidationError
 from shared.schemas import (REQUIRED_PARTS, ActionProposal, Event, EventType as E, ExperimentPlan,
                             HypothesisSet, Kit, KitState as S, RobotRequest, RunMetrics,
                             VerificationVerdict, WorldState)
-from services.core import governor, metrics as M
+from services.core import factoryflow as FF, governor, metrics as M
+from services.core.factoryflow_synthetic import demo_events as factoryflow_demo_events
 from services.core.db import Store
 from services.core.state_machine import IllegalTransition, is_escape, next_state
 
@@ -565,6 +566,28 @@ def metrics_run(run_id: str) -> dict:
     return M.compute(run_id, store.events(run_id=run_id)).model_dump()
 
 
+@app.get("/factoryflow/analysis/{run_id}")
+def factoryflow_analysis(run_id: str) -> dict:
+    result = FF.analyze(run_id, store.events(run_id=run_id))
+    return {**result.model_dump(), "summary": FF.supervisor_summary(result)}
+
+
+@app.post("/factoryflow/demo")
+async def factoryflow_demo() -> dict:
+    """Load a deterministic normal+failure story into the append-only event log."""
+    run_id = f"factoryflow_{uuid.uuid4().hex[:8]}"
+    events = factoryflow_demo_events(run_id, time.time())
+    store.start_run(run_id, "factoryflow", events[0].ts, "Normal cycle followed by upstream missing-wheel failure")
+    for event in events:
+        store.append(event)
+        await _broadcast({"type": "event", "event": event.model_dump(), "kit": None})
+    store.end_run(run_id, events[-1].ts)
+    result = FF.analyze(run_id, events)
+    data = {**result.model_dump(), "summary": FF.supervisor_summary(result)}
+    store.save_analysis(run_id, "factoryflow_root_cause", time.time(), data)
+    return data
+
+
 @app.get("/state")
 async def state() -> dict:
     await _robot_status()
@@ -658,6 +681,26 @@ async def robot_status() -> dict:
 async def robot_stop() -> dict:
     r = await _http.post(f"{ROBOT_URL}/robot/stop")
     return r.json()
+
+
+@app.post("/robot/isaac/{action}")
+async def robot_isaac_action(action: str) -> dict:
+    if action not in {"accept", "complete", "cancel"}:
+        raise HTTPException(404, f"unknown Isaac operator action {action}")
+    try:
+        response = await _http.post(f"{ROBOT_URL}/robot/isaac/{action}")
+    except Exception as ex:  # noqa: BLE001
+        raise HTTPException(502, f"robot service unreachable: {ex}")
+    if response.status_code >= 400:
+        raise HTTPException(response.status_code, response.json().get("detail", response.text))
+    event = {"accept": E.OPERATOR_ACCEPTED, "complete": E.TELEOP_COMPLETED,
+             "cancel": E.OPERATOR_CANCELLED}[action]
+    await emit(event, None, {"control_mode": "human_teleoperation", "simulator": "isaac_sim"},
+               source="operator", run_id=_current_run_id())
+    if action == "accept":
+        await emit(E.TELEOP_STARTED, None, {"control_mode": "human_teleoperation", "simulator": "isaac_sim"},
+                   source="operator", run_id=_current_run_id())
+    return response.json()
 
 
 # --------------------------------------------------------------------------- #
@@ -860,6 +903,16 @@ async def ws_endpoint(ws: WebSocket) -> None:
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard() -> FileResponse:
     return FileResponse(STATIC / "dashboard.html")
+
+
+@app.get("/factoryflow", response_class=HTMLResponse)
+def factoryflow_dashboard() -> FileResponse:
+    return FileResponse(STATIC / "factoryflow.html")
+
+
+@app.get("/operator", response_class=HTMLResponse)
+def operator_dashboard() -> FileResponse:
+    return FileResponse(STATIC / "operator.html")
 
 
 @app.get("/station/{who}", response_class=HTMLResponse)

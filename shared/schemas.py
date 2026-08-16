@@ -62,6 +62,22 @@ class EventType(str, Enum):
     # containment
     POLICY_DENIED = "POLICY_DENIED"           # OpenShell / sandbox blocked an agent action
     ROBOT_ERROR = "ROBOT_ERROR"
+    # FactoryFlow station dependency events. These are deliberately structured:
+    # deterministic code computes timing and causality; the LLM explains it.
+    PARTS_PREPARATION_STARTED = "PARTS_PREPARATION_STARTED"
+    PARTS_TRANSFERRED = "PARTS_TRANSFERRED"
+    ASSEMBLY_STARTED = "ASSEMBLY_STARTED"
+    ASSEMBLY_BLOCKED = "ASSEMBLY_BLOCKED"
+    ASSEMBLY_COMPLETED = "ASSEMBLY_COMPLETED"
+    INSPECTION_STARTED = "INSPECTION_STARTED"
+    INSPECTION_COMPLETED = "INSPECTION_COMPLETED"
+    STATION_IDLE_STARTED = "STATION_IDLE_STARTED"
+    STATION_IDLE_ENDED = "STATION_IDLE_ENDED"
+    INTERVENTION_REQUESTED = "INTERVENTION_REQUESTED"
+    OPERATOR_ACCEPTED = "OPERATOR_ACCEPTED"
+    TELEOP_STARTED = "TELEOP_STARTED"
+    TELEOP_COMPLETED = "TELEOP_COMPLETED"
+    OPERATOR_CANCELLED = "OPERATOR_CANCELLED"
 
 
 class Event(BaseModel):
@@ -158,11 +174,27 @@ class RobotRequest(BaseModel):
 
 
 class RobotStatus(BaseModel):
-    state: Literal["idle", "moving", "waiting_human", "done", "error", "estopped"]
+    state: Literal["idle", "moving", "waiting_human", "waiting_operator", "teleoperating", "done", "error", "estopped"]
     adapter: str
     instruction: Optional[str] = None
     last_action: Optional[dict] = None
     action_id: Optional[str] = None
+
+
+class FactoryFlowRootCause(BaseModel):
+    run_id: str
+    observed_bottleneck: Optional[str] = None
+    root_cause_station: Optional[str] = None
+    root_cause: Optional[str] = None
+    missing_component: Optional[str] = None
+    affected_stations: list[str] = Field(default_factory=list)
+    dependency_idle_seconds: float = 0.0
+    assembly_blocked_seconds: float = 0.0
+    station_processing_seconds: dict[str, float] = Field(default_factory=dict)
+    transfer_seconds: dict[str, float] = Field(default_factory=dict)
+    backlog_by_station: dict[str, int] = Field(default_factory=dict)
+    recommendation: str = "No intervention required."
+    supporting_event_ids: list[int] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- #

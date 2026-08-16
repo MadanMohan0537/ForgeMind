@@ -4,6 +4,7 @@ Adapters:
   MockArm  - sleeps through the routine, always succeeds (CI / no hardware).
   HumanArm - shows the instruction on the recovery-station screen and waits for the human to tap Done.
              This is the hackathon actuator. Same command, same verification, arm-shaped hole in the code.
+  IsaacHumanArm - creates an Isaac Sim teleoperation session and waits for an external operator.
   RealArm  - stub. Fill in with your SDK (pymycobot / xArm / pydobot ...). Teach positions into positions.json.
 """
 from __future__ import annotations
@@ -92,6 +93,55 @@ class HumanArm(ArmAdapter):
             if time.time() - t0 > self.timeout_seconds:
                 self.on_instruction(None)
                 raise RuntimeError("human actuator timed out")
+        self.on_instruction(None)
+
+
+class IsaacHumanArm(ArmAdapter):
+    """Human-controlled Isaac Sim actuator.
+
+    FactoryFlow supplies intent only. The external operator controls the simulated
+    joints/gripper and explicitly completes or cancels the session through the API.
+    """
+    name = "isaac_human"
+    timeout_seconds = float(os.environ.get("ISAAC_OPERATOR_TIMEOUT_SECONDS", "300"))
+
+    def __init__(self, on_step, on_instruction: Callable[[Optional[str]], None]):
+        super().__init__(on_step)
+        self.on_instruction = on_instruction
+        self.completed = threading.Event()
+        self.cancelled = threading.Event()
+
+    def operator_complete(self) -> None:
+        self.completed.set()
+
+    def operator_cancel(self) -> None:
+        self.cancelled.set()
+
+    def home(self) -> None:
+        self.check_stop()
+
+    def pick(self, source_bin: str, part: str) -> None:
+        self.completed.clear()
+        self.cancelled.clear()
+        self.on_instruction(
+            f"External operator: teleoperate the Isaac Sim arm to pick ONE "
+            f"{part.replace('_', ' ')} from {source_bin.replace('_', ' ')}."
+        )
+
+    def place(self, target_zone: str) -> None:
+        self.on_instruction(
+            f"External operator: place the part in {target_zone.replace('_', ' ')}, "
+            "return the arm to a safe pose, then confirm completion."
+        )
+        started = time.time()
+        while not self.completed.wait(0.2):
+            self.check_stop()
+            if self.cancelled.is_set():
+                self.on_instruction(None)
+                raise RuntimeError("cancelled by operator")
+            if time.time() - started > self.timeout_seconds:
+                self.on_instruction(None)
+                raise RuntimeError("Isaac Sim operator timed out")
         self.on_instruction(None)
 
 

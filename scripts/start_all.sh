@@ -19,6 +19,8 @@ trap 'kill $P1 $P2 $P3 ${P4:-} 2>/dev/null || true' EXIT
 sleep 2
 IP=$(hostname -I 2>/dev/null | awk '{print $1}'); IP=${IP:-localhost}
 echo "dashboard    http://$IP:8100/dashboard"
+echo "factoryflow  http://$IP:8100/factoryflow"
+echo "operator     http://$IP:8100/operator"
 echo "stations     http://$IP:8100/station/alice  /bob  /charlie  /recovery"
 echo "calibrate    http://$IP:8150/calibrate"
 echo "logs         tail -f logs/*.log"

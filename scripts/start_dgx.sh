@@ -3,7 +3,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-source .venv/bin/activate
+if [ -z "${VIRTUAL_ENV:-}" ]; then
+  [ -f .venv/bin/activate ] || {
+    echo "No active Python environment and .venv/bin/activate is missing" >&2
+    exit 1
+  }
+  source .venv/bin/activate
+fi
 export PYTHONPATH="$PWD"
 
 export MODEL_RUNTIME="${MODEL_RUNTIME:-ollama}"
