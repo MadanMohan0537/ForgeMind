@@ -1,0 +1,49 @@
+# recipe.yaml — the ONLY place that knows what you're actually inspecting.
+# Swap this file to point the whole pipeline at a completely different object.
+# Nothing in perception/*.py ever mentions "wheel", "roof", or "body" — it only
+# ever reads part definitions from here.
+
+name: default_recipe
+
+# Each part the pipeline should count. "method" picks a detector implementation
+# (see perception/detectors/) — right now only "color" ships, but the detector
+# factory is a registry, so adding "template" or "ml" later is a drop-in.
+parts:
+  - id: red_body
+    method: color
+    hsv_ranges:
+      # red wraps around hue 0/180 in HSV, so it needs two ranges OR'd together
+      - [[0, 120, 70], [10, 255, 255]]
+      - [[170, 120, 70], [180, 255, 255]]
+    min_area: 500
+    expected_count: 1
+
+  - id: black_wheel
+    method: color
+    hsv_ranges:
+      - [[0, 0, 0], [180, 255, 50]]
+    min_area: 200
+    expected_count: 2
+
+  - id: blue_roof
+    method: color
+    hsv_ranges:
+      - [[100, 150, 0], [140, 255, 255]]
+    min_area: 500
+    expected_count: 1
+
+# How many consecutive stable frames are required before a reading is trusted,
+# and the floor confidence below which a reading is treated as noise.
+stability:
+  required_frames: 10
+  min_confidence: 0.6
+
+# Zones this recipe cares about. Names are arbitrary strings — the pipeline
+# does not hardcode "inspection_zone" anywhere; it just iterates whatever is
+# in zones.json and matches against this list.
+zones:
+  - inspection_zone
+  - robot_zone
+  - assembly_queue
+
+zones_file: config/zones.json
