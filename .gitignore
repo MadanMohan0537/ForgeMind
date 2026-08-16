@@ -8,4 +8,5 @@ data/open/*.zip
 data/open/*.csv
 scripts/mediamtx*
 .venv/
+pytest-of-*/
 logs/
