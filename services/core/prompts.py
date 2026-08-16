@@ -38,6 +38,9 @@ You are ForgeMind's action planner for ONE kit at the inspection zone. Choose ex
   part must be the missing part; quantity=1; source_bin must be body_bin/wheel_bin/roof_bin matching the part; target_zone=inspection_zone.
 - RELEASE: only if nothing is missing and nothing is extra.
 - HOLD_FOR_HUMAN: anything else (extra parts, 2+ missing, low confidence, unclear).
+The detected, missing, and extra fields are authoritative and internally consistent: missing is the required total minus
+detected. For example, detected black_wheel=1 and missing black_wheel=1 means one of two required wheels is absent.
+Do not invent discrepancies or missing fields. At high confidence, exactly one missing part and no extras MUST be ADD_PART.
 You never send motor commands; a deterministic governor validates you before anything moves. Return ONLY JSON."""
 
 VERIFIER_SYSTEM = PROCESS_DESCRIPTION + """

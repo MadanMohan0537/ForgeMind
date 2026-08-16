@@ -49,6 +49,11 @@ def test_ollama_mode_disables_reasoning(monkeypatch):
     assert captured["extra_body"]["think"] is False
 
 
+def test_action_prompt_defines_computed_missing_counts():
+    assert "detected black_wheel=1 and missing black_wheel=1" in prompts.ACTION_SYSTEM
+    assert "MUST be ADD_PART" in prompts.ACTION_SYSTEM
+
+
 def test_hypothesis_grounding_filters_invalid_and_duplicate_citations(monkeypatch):
     model_result = _set(
         _hypothesis("H1", [1, 999, 1]),
