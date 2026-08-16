@@ -57,7 +57,7 @@ Open:
 - `http://<spark>:8100/station/charlie`
 - `http://<spark>:8100/station/recovery`
 
-For a camera-free rehearsal:
+For a camera-free rehearsal (event injection, no perception):
 
 ```bash
 python scripts/synthetic_run.py --mode baseline --kits 8 --fast
@@ -65,6 +65,17 @@ python scripts/synthetic_run.py --mode recovery --kits 8 --fast
 python scripts/synthetic_run.py --mode improved --kits 8 --fast
 python -m pytest -q
 ```
+
+For a camera-free rehearsal **with perception** (replay a generated line video):
+
+```bash
+python scripts/generate_demo_video.py          # writes runs/demo_line.mp4
+SOURCE=runs/demo_line.mp4 REPLAY_LOOP=1 \
+PLANNER=rule ROBOT_ADAPTER=mock \
+bash scripts/start_all.sh
+```
+
+The demo MP4 shows complete kits and missing-wheel kits inside the default inspection zone so OpenCV counting works without a phone or RTSP stream. Regenerate anytime with `python scripts/generate_demo_video.py`.
 
 ## Demo and submission
 
