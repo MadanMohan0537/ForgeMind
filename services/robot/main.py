@@ -1,7 +1,7 @@
 """ForgeMind robot service. Small API, whitelist everything, one routine.
 
 Run:  ROBOT_ADAPTER=human uvicorn services.robot.main:app --host 0.0.0.0 --port 8200
-Env:  ROBOT_ADAPTER=mock|human|real   CORE_URL=http://127.0.0.1:8100
+Env:  ROBOT_ADAPTER=mock|human|isaac_human|real   CORE_URL=http://127.0.0.1:8100
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from shared.schemas import INSPECTION_ZONE, PART_TO_BIN, RobotRequest, RobotStatus
-from services.robot.adapters import HumanArm, MockArm, RealArm
+from services.robot.adapters import HumanArm, IsaacHumanArm, MockArm, RealArm
 
 CORE_URL = os.environ.get("CORE_URL", "http://127.0.0.1:8100")
 ADAPTER = os.environ.get("ROBOT_ADAPTER", "human")
@@ -42,13 +42,16 @@ def _on_step(step: str) -> None:
 
 def _on_instruction(text: Optional[str]) -> None:
     R.instruction = text
-    R.state = "waiting_human" if text else R.state
+    if text:
+        R.state = "waiting_operator" if ADAPTER == "isaac_human" else "waiting_human"
 
 
 if ADAPTER == "mock":
     arm = MockArm(_on_step)
 elif ADAPTER == "real":
     arm = RealArm(_on_step)
+elif ADAPTER == "isaac_human":
+    arm = IsaacHumanArm(_on_step, _on_instruction)
 else:
     arm = HumanArm(_on_step, _on_instruction)
 
@@ -99,7 +102,7 @@ def add_part(req: RobotRequest) -> dict:
     if req.target_zone != INSPECTION_ZONE:
         raise HTTPException(400, f"target_zone must be {INSPECTION_ZONE}")
     with R.lock:
-        if R.state in ("moving", "waiting_human"):
+        if R.state in ("moving", "waiting_human", "waiting_operator", "teleoperating"):
             raise HTTPException(409, f"robot busy ({R.state})")
         R.state = "moving"
         R.action_id = req.action_id
@@ -133,3 +136,31 @@ def human_done() -> dict:
         arm.human_done()
         return {"ok": True}
     raise HTTPException(409, f"adapter is {arm.name}, not human")
+
+
+@app.post("/robot/isaac/accept")
+def isaac_accept() -> dict:
+    if not isinstance(arm, IsaacHumanArm):
+        raise HTTPException(409, f"adapter is {arm.name}, not isaac_human")
+    if R.state != "waiting_operator":
+        raise HTTPException(409, f"no intervention is awaiting an operator ({R.state})")
+    R.state = "teleoperating"
+    return {"ok": True, "state": R.state, "action_id": R.action_id}
+
+
+@app.post("/robot/isaac/complete")
+def isaac_complete() -> dict:
+    if not isinstance(arm, IsaacHumanArm):
+        raise HTTPException(409, f"adapter is {arm.name}, not isaac_human")
+    if R.state not in ("waiting_operator", "teleoperating"):
+        raise HTTPException(409, f"no active Isaac intervention ({R.state})")
+    arm.operator_complete()
+    return {"ok": True, "action_id": R.action_id}
+
+
+@app.post("/robot/isaac/cancel")
+def isaac_cancel() -> dict:
+    if not isinstance(arm, IsaacHumanArm):
+        raise HTTPException(409, f"adapter is {arm.name}, not isaac_human")
+    arm.operator_cancel()
+    return {"ok": True, "action_id": R.action_id}

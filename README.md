@@ -1,8 +1,10 @@
-# ForgeMind - local AI process scientist on DGX Spark
+# FactoryFlow AI / ForgeMind - local process intelligence on DGX Spark
 
 **See the error. Recover the product. Improve the process.**
 
-ForgeMind watches a miniature assembly line, counts kit components, holds incomplete kits, directs a governed recovery, visually verifies the correction, and studies the event history to propose a controlled process improvement. The deployed model and data services run locally on an NVIDIA GB10 Grace Blackwell system.
+FactoryFlow AI uses ForgeMind's event-sourced services to reconstruct dependencies across a three-stage miniature assembly line. It distinguishes where a backlog is visible from where its cause originated, requests a governed intervention, and verifies recovery. The demo runs locally on an NVIDIA DGX Spark and does not require a physical camera or robot.
+
+The primary demo story is **Station A supplies an incomplete kit → Station B is blocked and accumulates backlog → Station C becomes dependency-idle → FactoryFlow attributes the root cause to Station A → an external human teleoperates an Isaac Sim arm to deliver the missing wheel → the line resumes**.
 
 ## What is implemented
 
@@ -15,6 +17,8 @@ ForgeMind watches a miniature assembly line, counts kit components, holds incomp
 - Live dashboard and four real Core-connected station pages; no separate fake-data UI.
 - Code-verified analysis of 10,000 UCI AI4I 2020 rows, rendered in the Findings tab.
 - Host analyst fallback. NemoClaw is installed separately, but ForgeMind does not claim an OpenShell containment demonstration yet.
+- Deterministic Station A/B/C dependency analysis, including observed bottleneck, upstream root cause, transfer time, blocked time, dependency-driven idle time, and supporting event IDs.
+- `IsaacHumanArm`, which creates a human-operated teleoperation session; the AI never receives raw joint-control authority.
 
 ## Architecture
 
@@ -23,7 +27,7 @@ phone / MP4 -> perception :8150 -> KIT_INSPECTED + evidence -> core :8100
                       |                                      | state, metrics, WebSocket
                       +-> Cosmos :8001                        +-> dashboard + station phones
                                                              +-> deterministic governor
-Nemotron 3.5 Lightning (Ollama :11434) -> proposals/analysis  +-> robot :8200 (HumanArm/MockArm)
+Nemotron 3.5 Lightning (Ollama :11434) -> proposals/analysis  +-> robot :8200 (HumanArm/MockArm/IsaacHumanArm)
 ```
 
 The language model produces high-level structured proposals only. It never computes the displayed metrics and never sends coordinates or raw motor commands.
@@ -46,6 +50,8 @@ camera acceptance, ten-minute stability monitoring, and comparable trial capture
 Open:
 
 - `http://<spark>:8100/dashboard`
+- `http://<spark>:8100/factoryflow` — three-station root-cause demo
+- `http://<spark>:8100/operator` — external Isaac Sim operator console
 - `http://<spark>:8150/calibrate`
 - `http://<spark>:8100/station/alice`
 - `http://<spark>:8100/station/bob`
@@ -60,6 +66,11 @@ python scripts/synthetic_run.py --mode recovery --kits 8 --fast
 python scripts/synthetic_run.py --mode improved --kits 8 --fast
 python -m pytest -q
 ```
+
+For the FactoryFlow normal-then-failure story, start Core and Robot with
+`ROBOT_ADAPTER=isaac_human`, open `/factoryflow`, and press **Run demo scenario**.
+When an intervention is requested, the external operator uses `/operator` to accept,
+teleoperate the arm inside Isaac Sim, and explicitly confirm completion.
 
 ## Demo and submission
 
@@ -77,7 +88,8 @@ python -m pytest -q
 
 - Color counting assumes a calibrated, controlled view; Cosmos is a second opinion, not ground truth.
 - Recovery supports adding one known missing part. Extra/uncertain parts require a human.
-- The hackathon actuator is HumanArm or MockArm; the physical-arm adapter remains a stub.
+- `IsaacHumanArm` implements the safe session boundary and operator controls. The Isaac Sim scene, robot asset, and input-device bindings must still be launched/configured in Isaac Sim.
+- The deterministic scenario proves event causality inside the simulation; it is not statistical proof about a real production line.
 - Short runs are demonstrations, not statistically strong causal evidence.
 - Wi-Fi-off behavior must be tested physically before it is claimed.
 - The current host analyst fallback is not evidence of NemoClaw/OpenShell containment.
