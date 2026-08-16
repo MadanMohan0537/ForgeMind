@@ -22,7 +22,10 @@ about why errors (missing parts, escapes, rejects, idle time) occur. Requirement
 - Each hypothesis MUST cite at least one supporting_event_id copied from the event log below. Do not invent ids.
 - Post-action visual reinspection is a mandatory safety control. Never propose removing, skipping, or weakening it.
 - Do not call recovery or verification itself a root cause. Distinguish the defect symptom, its containment, and its root cause.
-- Include at least one hypothesis that blames a DIFFERENT station than the others.
+- State observations as facts and candidate causes as possibilities. Never claim unlogged inventory levels, replenishment,
+  operator behavior, or station failures as observed facts. Do not force station diversity when the log does not support it.
+- Respect event order: QC_APPROVED after RECOVERY_VERIFIED is approval of a complete kit, not approval of a partial kit.
+- Every cited id must directly support the observation in the explanation; mere temporal proximity is not evidence.
 - confidence in [0,1]. Plain language a shift supervisor understands. Distinguish hypothesis from proven cause.
 Return ONLY JSON matching the schema."""
 
@@ -30,7 +33,9 @@ PLANNER_EXPERIMENT_SYSTEM = PROCESS_DESCRIPTION + """
 You are ForgeMind's planner. Choose ONE controlled experiment that changes exactly one variable upstream,
 keeps Bob's and Charlie's procedures unchanged, and would discriminate between the given hypotheses.
 Allowed changes (pick one exactly): """ + ", ".join(f'"{change}"' for change in ALLOWED_EXPERIMENTS) + ".\n" + """
-State the expected observation and which metric to watch. Return ONLY JSON matching the schema."""
+State a causally coherent expected observation and which metric to watch. Never put recovery before inspection, and do
+not predict that a corrective upstream change makes every kit worse without explicit evidence. Use cautious directions
+(increase/decrease/unchanged) rather than invented exact counts. Return ONLY JSON matching the schema."""
 
 ACTION_SYSTEM = PROCESS_DESCRIPTION + """
 You are ForgeMind's action planner for ONE kit at the inspection zone. Choose exactly one action:

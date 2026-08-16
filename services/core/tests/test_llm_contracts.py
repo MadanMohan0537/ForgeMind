@@ -54,6 +54,12 @@ def test_action_prompt_defines_computed_missing_counts():
     assert "MUST be ADD_PART" in prompts.ACTION_SYSTEM
 
 
+def test_analysis_prompts_forbid_known_causal_misreads():
+    assert "QC_APPROVED after RECOVERY_VERIFIED" in prompts.ANALYST_SYSTEM
+    assert "Do not force station diversity" in prompts.ANALYST_SYSTEM
+    assert "Never put recovery before inspection" in prompts.PLANNER_EXPERIMENT_SYSTEM
+
+
 def test_hypothesis_grounding_filters_invalid_and_duplicate_citations(monkeypatch):
     model_result = _set(
         _hypothesis("H1", [1, 999, 1]),
