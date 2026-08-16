@@ -45,5 +45,112 @@
    "(6271.022, 7002.997]": 0.018,
    "(7002.997, 10469.914]": 0.0892
   }
- }
+ },
+ "hypotheses": {
+  "summary": "Competing hypotheses for machine failure likelihood based on deterministic manufacturing statistics and quartile thresholds.",
+  "hypotheses": [
+   {
+    "id": "H1",
+    "title": "High Torque and High Speed Coincidence",
+    "explanation": "The highest failure quartile (9.87%) occurs when Torque exceeds 46.8 Nm AND Rotational speed exceeds 1423 rpm, indicating mechanical stress overload.",
+    "predicate": [
+     {
+      "feature": "Torque [Nm]",
+      "op": ">=",
+      "value": 46.8
+     },
+     {
+      "feature": "Rotational speed [rpm]",
+      "op": ">=",
+      "value": 1423.0
+     }
+    ],
+    "expected": "higher",
+    "confidence": 0.95
+   },
+   {
+    "id": "H2",
+    "title": "High Temperature Differential",
+    "explanation": "A significant failure rate (6.68%) emerges when temp_diff exceeds 9.3 K, suggesting thermal stress as a primary failure driver.",
+    "predicate": [
+     {
+      "feature": "temp_diff",
+      "op": ">=",
+      "value": 9.3
+     }
+    ],
+    "expected": "higher",
+    "confidence": 0.92
+   },
+   {
+    "id": "H3",
+    "title": "High Tool Wear Regime",
+    "explanation": "The failure rate jumps from ~2.2% to 6.93% when Tool wear exceeds 162 minutes, indicating tool degradation as a critical failure predictor.",
+    "predicate": [
+     {
+      "feature": "Tool wear [min]",
+      "op": ">=",
+      "value": 162.0
+     }
+    ],
+    "expected": "higher",
+    "confidence": 0.88
+   },
+   {
+    "id": "H4",
+    "title": "Low Type L with High Temperature",
+    "explanation": "Type L has the highest baseline failure rate (3.92%), and combined with high Process temperature, represents a persistently risky operating regime.",
+    "predicate": [
+     {
+      "feature": "Type",
+      "op": "==",
+      "value": "L"
+     },
+     {
+      "feature": "Process temperature [K]",
+      "op": ">=",
+      "value": 330.0
+     }
+    ],
+    "expected": "higher",
+    "confidence": 0.85
+   }
+  ]
+ },
+ "verdicts": [
+  {
+   "id": "H1",
+   "verdict": "not_supported",
+   "n_inside": 662,
+   "n_outside": 9338,
+   "failure_rate_inside": 0.0227,
+   "failure_rate_outside": 0.0347,
+   "lift": 0.65
+  },
+  {
+   "id": "H2",
+   "verdict": "not_supported",
+   "n_inside": 7441,
+   "n_outside": 2559,
+   "failure_rate_inside": 0.0226,
+   "failure_rate_outside": 0.0668,
+   "lift": 0.34
+  },
+  {
+   "id": "H3",
+   "verdict": "supported",
+   "n_inside": 2543,
+   "n_outside": 7457,
+   "failure_rate_inside": 0.068,
+   "failure_rate_outside": 0.0223,
+   "lift": 3.06
+  },
+  {
+   "id": "H4",
+   "verdict": "inconclusive",
+   "n_inside": 0,
+   "n_outside": 10000,
+   "reason": "too few rows on one side"
+  }
+ ]
 }
