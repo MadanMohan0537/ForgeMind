@@ -742,7 +742,8 @@ async def analysis_verify(v: VerifyIn) -> dict:
 def analysis_get(run_id: str) -> dict:
     return {"hypotheses": store.latest_analysis(run_id, "hypotheses"),
             "experiment": store.latest_analysis(run_id, "experiment"),
-            "verification": store.latest_analysis(run_id, "verification")}
+            "verification": store.latest_analysis(run_id, "verification"),
+            "open_data": store.latest_analysis(run_id, "open_data")}
 
 
 class SubmitIn(BaseModel):

@@ -1,19 +1,28 @@
-# Demo video — 3:30 target (hard max 5:00), one continuous system, no slides
+# ForgeMind demo script (P5)
 
-Record the dashboard with laptop screen-capture; use one phone for table b-roll (repurpose the close-up phone). Show the GN100 in frame once.
+Target: 3:40; hard limit: 5:00. Use one continuous system, not slides. Replace bracketed values only after the final physical runs; never narrate a number that is not visible.
 
-| t | Shot | Say (short) | Rubric hit |
-|---|---|---|---|
-| 0:00 | Table + GN100 + phones | "ForgeMind: a local AI process scientist. One phone camera, three workers, one recovery station, everything runs on this DGX Spark." | Spark story |
-| 0:20 | Dashboard, Start baseline; Alice batch-preps kits | "Baseline: recovery off. The camera counts every kit; the system only watches." | Completeness |
-| 0:45 | Bob takes an incomplete kit; Charlie rejects a car | "Incomplete kit escaped to assembly → reject. Every event is logged with evidence clips." | Perception accuracy |
-| 1:05 | Start recovery; kit held (Now card red) | "Recovery on. One wheel missing, 97% confidence, kit held. Nemotron proposes ADD_PART; the deterministic governor checks nine conditions; approved." | Multi-step agent, branching |
-| 1:30 | Recovery station phone shows instruction; human places wheel; taps DONE; camera re-inspects → released | "The actuator is a person today and an arm tomorrow — same command, same verification. Nothing is trusted until the camera confirms it." | Do + See |
-| 2:00 | Findings tab: Generate hypotheses (pre-generated to save time), experiment card | "After the run, Nemotron 3 Super proposes competing explanations citing event ids, and recommends one controlled experiment: single-kit prep." | Innovation |
-| 2:25 | Improved run montage (10 s) → Compare table + intervention reduction | "We ran it. Fewer missing wheels, fewer interventions. One run is weak evidence — the verifier says so." | Value, honesty |
-| 2:50 | Containment tab; run `--demo-denial` live | "The analyst runs inside NemoClaw/OpenShell: it can read and think, but the robot route and the internet are denied by policy." | NVIDIA stack |
-| 3:05 | Wi-Fi off; hold a kit; recovery still works | "Wi-Fi off. 120B reasoner, VLM, video buffer and the whole log in one 128 GB pool. Factory video never leaves the room." | Spark story, performance |
-| 3:20 | Open-data table (AI4I) | "Same analyst on the UCI AI4I dataset: hypotheses as predicates, tested by code." | Open data |
-| 3:30 | Card: repo · what's real · what's next | | |
+| Time | Picture | Narration |
+|---|---|---|
+| 0:00-0:20 | Wide shot: line, overhead phone, station screens, and DGX Spark. | "ForgeMind is a local AI process scientist. It observes a production line, safely recovers a missing component, and tests the process change intended to prevent the error." |
+| 0:20-0:48 | Start baseline; Alice prepares three kits at once without a checklist. | "We induce realistic preparation errors with a repeatable batch-preparation setup. Baseline observes the process but does not recover defects." |
+| 0:48-1:05 | Incomplete kit reaches Bob; Charlie rejects it; show evidence event. | "A missing wheel escaped to assembly in the baseline. The detection, evidence, downstream rejection, and rework remain in the event log." |
+| 1:05-1:50 | Start recovery; Now card turns red; recovery station displays the instruction. | "With recovery enabled, vision detects one missing wheel and holds the kit. Local Nemotron 3.5 Lightning proposes only ADD_PART. A deterministic governor checks the world state before the HumanArm recovery is allowed." |
+| 1:50-2:10 | Human places the wheel and taps Done; camera reinspects; ticket becomes released. | "The actuator is a person in this build. Nothing is trusted until the camera sees a complete kit and releases it." |
+| 2:10-2:42 | Findings, controlled experiment, baseline/improved comparison. | "Nemotron proposes competing explanations grounded in recorded event IDs and recommends single-kit preparation. Across equal eight-kit runs, [visible measured comparison]. One short run is weak evidence, so the verdict is presented with that limitation." |
+| 2:42-3:02 | AI4I card in Findings. | "On 10,000 open-data rows, the model proposed four predicates. Code rejected two, supported high tool wear at 3.06 times lift, and marked one inconclusive because it selected no rows." |
+| 3:02-3:22 | Cosmos response and Spark measurements; show system in frame. | "Cosmos Reason2 verifies visual evidence locally. Nemotron, Cosmos, the video buffer, and the event history share the GB10 unified-memory system." |
+| 3:22-3:40 | Closing view of dashboard and line. | "ForgeMind closes the loop: observe, measure, reason, act, verify, and improve, without giving a generative model unchecked physical control." |
 
-Rules: no re-takes inside a shot; if something breaks, keep rolling and say what happened. Record take 1 at 7:30, fix, take 2 at 8:30.
+## Optional claims only after physical verification
+
+- Wi-Fi off: state only the functions personally observed while disconnected.
+- NemoClaw/OpenShell: the current ForgeMind analyst is the approved host fallback, not a containment demonstration. Include the containment shot only after a dedicated sandbox blocks all attempts with no side effects.
+- Robot: `HumanArm` means a human executes the instruction; `MockArm` is simulation; `RealArm` is not implemented.
+
+## Recording rules
+
+- Record two complete takes and keep rolling through small failures.
+- Keep the induced-error method visible.
+- Hide keys, tokens, notifications, IP addresses, and unrelated tabs.
+- Capture the dashboard at 1080p and verify the final unlisted video while logged out.

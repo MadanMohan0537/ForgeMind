@@ -1,18 +1,26 @@
-# Bounty write-ups (paste real numbers before submitting)
+# Bounty claim boundaries
 
-## 1. Best Use of Nemotron (Lightning bounty — only if Lightning is running)
-- What Lightning does: the per-kit action loop (propose ADD_PART / HOLD / RELEASE, JSON-only, thinking off) — latency ___ ms median. Super does offline hypotheses/experiments.
-- Why Lightning there: the loop is latency-bound and runs on every kit; 30B-A3B with DSpark speculative decoding on the Spark gives ~___ tok/s so a decision arrives before the human finishes reading the hold.
-- How optimized: NVFP4 checkpoint, DSpark draft model, prefix caching, structured JSON output, thinking disabled for the loop.
-(If Lightning was cut: delete this section; the "Nemotron 3 Super" story lives in README.)
+Use only claims that the final recording verifies visibly.
 
-## 2. Best Use of NemoClaw + OpenShell ("capable agent worth containing")
-- Agent: the ForgeMind analyst (`services/agent/agent_loop.py`) — reads the event log, calls Nemotron, submits hypotheses/experiments; runs always-on with `--watch`.
-- Policy (`services/agent/openshell_policy.yaml` — paste the applied version): default-deny egress; allow inference + core read routes + analysis submit; robot service (port 8200) denied; evidence read-only.
-- Demonstrated: `--demo-denial` attempts robot call / internet / write outside workspace → three POLICY_DENIED events on the Containment tab (screenshot: ___).
-- Why it matters: only the deterministic governor can move the actuator; the model can never reach it even if it wanted to.
+## Best use of Nemotron
 
-## 3. Champions Choice / Ascend — 30-second business answer
-- Who buys: small manufacturers / assembly lines with cameras and no data science team.
-- Wedge: retrofit one camera + one station screen; value in a day (escape rate, rework, cycle time), no cloud.
-- Why local: video is confidential; latency; governance keeps working offline. Why now: 128 GB Sparks make a 120B reasoner + VLM + video buffer fit on a desk.
+- Deployed model: `nemotron-3.5-lightning:latest`, Q4_K_M, 32.9B total / approximately 3B active MoE, local Ollama.
+- Role: structured high-level action proposals plus evidence-grounded hypotheses, experiments, and verdicts.
+- Safety: a deterministic governor validates every action; the model never emits joint commands or computes dashboard metrics.
+- Measured model workload: 74.135 aggregate output tokens/s across 492 structured regulatory-extraction calls. This is a separate throughput benchmark and must not be presented as per-kit action latency.
+- Measured ForgeMind analysis on the DGX: hypothesis generation 9.9 s and experiment generation 5.0 s in the documented P3 replay.
+
+Do not claim NVFP4, speculative decoding, a 120B runtime, or an unmeasured per-kit median.
+
+## NemoClaw / OpenShell
+
+Do **not** select this bounty with the current build. ForgeMind uses the execution plan's host-agent fallback. The installed NemoClaw sandbox is an unrelated Qwen setup and is not part of ForgeMind.
+
+Eligibility requires a dedicated ForgeMind sandbox, the applied `services/agent/openshell_policy.yaml`, and independent verification that robot access, internet access, and out-of-workspace writes were blocked with no side effect. A self-reported `POLICY_DENIED` event alone is not proof.
+
+## Business answer
+
+- Buyer: small assembly operations that already have cameras but lack a data-science team.
+- Wedge: one camera and station screens expose escapes, rework, recovery, and cycle time without uploading factory video.
+- Differentiation: ForgeMind proposes the next controlled process test, measures the result in code, and uses fewer interventions when prevention improves.
+- Local value: private video, predictable latency, and governed operation even when cloud services are unavailable. Wi-Fi-off behavior still requires physical verification before that sentence is used in the video.

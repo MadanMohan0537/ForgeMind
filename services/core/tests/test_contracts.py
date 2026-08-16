@@ -69,6 +69,48 @@ def test_valid_agent_submissions_are_stored(tmp_path):
     asyncio.run(scenario())
 
 
+def test_open_data_submission_is_returned_for_dashboard(tmp_path):
+    """P5 renders the code-verified AI4I result from the normal analysis API."""
+    main = boot(tmp_path)
+    result = {
+        "dataset": "UCI AI4I 2020",
+        "rows": 10000,
+        "overall_failure_rate": 0.0339,
+        "results": [{"id": "H3", "hypothesis": "High tool wear regime",
+                     "lift": 3.06, "verdict": "supported"}],
+    }
+
+    async def scenario() -> None:
+        async with client(main) as c:
+            await _open_run(c, "ai4i_2020")
+            response = await c.post("/analysis/submit/ai4i_2020", json={"kind": "open_data", "data": result})
+            assert response.status_code == 200
+            stored = (await c.get("/analysis/ai4i_2020")).json()
+            assert stored["open_data"] == result
+
+    asyncio.run(scenario())
+
+
+def test_product_pages_use_live_core_routes(tmp_path):
+    """P5 ships the real Core UI, not the disconnected local-storage prototype."""
+    main = boot(tmp_path)
+
+    async def scenario() -> None:
+        async with client(main) as c:
+            dashboard = (await c.get("/dashboard")).text
+            assert 'id="coreconn"' in dashboard
+            assert 'href="/station/alice"' in dashboard
+            assert 'id="openData"' in dashboard
+            assert "forgemind-demo-events" not in dashboard
+
+            for station in ("alice", "bob", "charlie", "recovery"):
+                page = await c.get(f"/station/{station}")
+                assert page.status_code == 200
+                assert f"/station/${{who}}/${{action}}" in page.text
+
+    asyncio.run(scenario())
+
+
 def test_malformed_agent_submissions_are_rejected(tmp_path):
     """The dashboard renders this straight into the Findings tab; junk must not reach it."""
     main = boot(tmp_path)

@@ -29,14 +29,14 @@
 <script>
 const who = location.pathname.split('/').pop().toLowerCase();
 const $=s=>document.querySelector(s); $('#who').textContent = who.toUpperCase();
-const main=$('#main'); let kits=[], run={}, robot={};
+const main=$('#main'); let kits=[], run={}, robot={}, busy=false;
 // Shared token, only needed when core runs with FORGE_TOKEN set. Open the page once as
 // /station/alice?token=... and it is remembered on this phone from then on.
 const tok = new URLSearchParams(location.search).get('token');
 if(tok) localStorage.forgeToken = tok;
 const authHeaders = () => localStorage.forgeToken ? {'X-Forge-Token': localStorage.forgeToken} : {};
 function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('on'); setTimeout(()=>el.classList.remove('on'),1400); }
-async function act(action, body){ const r=await fetch(`/station/${who}/${action}`,{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify(body||{})}); const j=await r.json().catch(()=>({})); toast(r.ok? `${action} ✓ ${j.kit_id||''} ${j.kit_state||''}` : (r.status===401? '✗ token needed — reopen this page with ?token=' : `✗ ${j.detail||r.status}`)); refresh(); }
+async function act(action, body){ if(busy) return; busy=true; try{ const r=await fetch(`/station/${who}/${action}`,{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify(body||{})}); const j=await r.json().catch(()=>({})); toast(r.ok? `${action} ✓ ${j.kit_id||''} ${j.kit_state||''}` : (r.status===401? '✗ token needed — reopen this page with ?token=' : `✗ ${j.detail||r.status}`)); refresh(); }catch(e){ toast(`✗ core offline: ${e.message}`); }finally{ busy=false; } }
 const layouts = {
   alice: ()=>`<div class="status" id="st">Prepare kits: 1 body · 2 wheels · 1 roof</div>
     <button class="big dark" onclick="act('start')">START KIT</button>
@@ -75,7 +75,7 @@ function paint(){
   const mine = {alice:['PREPARING','SENT'], bob:['RELEASED','AT_ASSEMBLY'], charlie:['ASSEMBLED','QC_PASS','QC_FAIL'], recovery:['HELD','RECOVERING','REVERIFYING','HUMAN_REVIEW']}[who]||[];
   $('#log').innerHTML = kits.filter(k=>mine.includes(k.state)).slice(-12).reverse().map(k=>`${k.kit_id} · ${k.state}${Object.keys(k.missing||{}).length?' · missing '+Object.keys(k.missing).join(','):''}`).join('<br>') || '<span>—</span>';
 }
-async function refresh(){ try{ const s=await (await fetch('/state')).json(); kits=s.kits; run=s.run; robot=s.robot||{}; paint(); }catch(e){} }
+async function refresh(){ try{ const r=await fetch('/state'); if(!r.ok) throw new Error(`HTTP ${r.status}`); const s=await r.json(); kits=s.kits; run=s.run; robot=s.robot||{}; paint(); }catch(e){ $('#run').textContent='core offline'; } }
 refresh(); setInterval(refresh, 1200);
 </script>
 </body>
