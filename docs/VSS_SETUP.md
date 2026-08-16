@@ -26,8 +26,9 @@ answers, keep going. If not, stop fighting it and fall back immediately.
 
 ## 3. Fallback: Cosmos
 
+The DGX Spark uses the locally downloaded Cosmos Reason2 8B checkpoint with the existing vLLM container. No additional NGC pull is required.
+
 ```bash
-export NGC_API_KEY="<your key>"
 bash scripts/serve_cosmos.sh
 ```
 

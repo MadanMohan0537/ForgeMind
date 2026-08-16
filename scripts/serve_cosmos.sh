@@ -1,29 +1,52 @@
 #!/usr/bin/env bash
-# P4: fallback VLM serving script - use if VSS blueprint isn't answering
-# questions about a sample clip by the 1:00 AM checkpoint.
-#
-# Runs the NVIDIA Cosmos Reason VLM NIM container locally on the GN100/Spark
-# and exposes an OpenAI-compatible endpoint at http://127.0.0.1:8001/v1.
-#
-# Requires: NGC_API_KEY set, docker + NVIDIA Container Toolkit installed.
+# P4: serve the locally downloaded Cosmos Reason2 VLM through vLLM.
+# Exposes an OpenAI-compatible endpoint at http://127.0.0.1:8001/v1.
 set -euo pipefail
 
-: "${NGC_API_KEY:?Set NGC_API_KEY first — get it from https://ngc.nvidia.com}"
-# NOTE(P4): confirm the exact NIM image name/tag on build.nvidia.com/nim
-# for the Cosmos model you have access to — this is a placeholder.
-IMAGE="${COSMOS_IMAGE:-nvcr.io/nim/nvidia/cosmos-reason1-7b:latest}"
+MODEL_DIR="${COSMOS_MODEL_DIR:-$HOME/models/models/llm/nvidia--Cosmos-Reason2-8B}"
+IMAGE="${COSMOS_IMAGE:-vllm/vllm-openai:latest}"
+CONTAINER="${COSMOS_CONTAINER:-forgemind-cosmos}"
 PORT="${COSMOS_PORT:-8001}"
 
-echo "$NGC_API_KEY" | docker login nvcr.io --username '$oauthtoken' --password-stdin
+if [ ! -f "$MODEL_DIR/config.json" ]; then
+  echo "Cosmos model not found: $MODEL_DIR" >&2
+  exit 1
+fi
 
-docker run -it --rm \
-  --gpus all \
-  --shm-size=16GB \
-  -e NGC_API_KEY="$NGC_API_KEY" \
-  -p "${PORT}:8000" \
-  -v "$HOME/.cache/nim:/opt/nim/.cache" \
-  "$IMAGE"
+if docker inspect "$CONTAINER" >/dev/null 2>&1; then
+  if [ "$(docker inspect -f "{{.State.Running}}" "$CONTAINER")" = "true" ]; then
+    echo "$CONTAINER is already running"
+  else
+    docker start "$CONTAINER"
+  fi
+else
+  docker run -d \
+    --name "$CONTAINER" \
+    --gpus all \
+    --ipc=host \
+    --restart unless-stopped \
+    -p "127.0.0.1:${PORT}:8000" \
+    -v "${MODEL_DIR}:/model:ro" \
+    "$IMAGE" \
+    /model \
+    --served-model-name cosmos \
+    --trust-remote-code \
+    --dtype bfloat16 \
+    --max-model-len 8192 \
+    --gpu-memory-utilization 0.35 \
+    --limit-mm-per-prompt "{\"video\":1,\"image\":4}"
+fi
 
-# Once running, hand perception the endpoint:
-#   export VLM_URL="http://127.0.0.1:${PORT}/v1"
-#   export VLM_MODEL="cosmos"
+echo "Waiting for Cosmos..."
+for attempt in $(seq 1 60); do
+  if curl -sf --max-time 5 "http://127.0.0.1:${PORT}/v1/models" >/dev/null; then
+    echo "Cosmos ready: http://127.0.0.1:${PORT}/v1"
+    echo "export VLM_URL=http://127.0.0.1:${PORT}/v1"
+    echo "export VLM_MODEL=cosmos"
+    exit 0
+  fi
+  sleep 5
+done
+
+echo "Cosmos did not become ready; inspect: docker logs $CONTAINER" >&2
+exit 1

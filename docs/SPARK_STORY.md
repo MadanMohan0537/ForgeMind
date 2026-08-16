@@ -6,18 +6,18 @@ no placeholders in the final take.
 
 ## Model
 
-- Reasoning model: Nemotron 32B Lightning (local)
-- VLM verification: VSS (preferred) / Cosmos (fallback)
+- Reasoning model: Nemotron 3.5 Lightning (local, Ollama)
+- VLM verification: Cosmos Reason2 8B (local, vLLM fallback)
 
 ## Numbers to fill in
 
 | Metric | Value |
 |---|---|
-| Nemotron 32B Lightning tokens/s | TBD |
-| VLM verification latency (per clip) | TBD |
-| Perception pipeline fps | TBD |
-| Memory in use (idle) | TBD |
-| Memory in use (peak, both models loaded) | TBD |
+| Nemotron 3.5 Lightning tokens/s | 68.69 observed (256 tokens / 3.727 s) |
+| VLM verification latency (per clip) | 6.26 s on a 2 s, 640x480 MP4 |
+| Perception pipeline fps | Not measurable yet: no FPS counter is implemented |
+| Memory before Cosmos load | 33 GiB used |
+| Memory with Nemotron and Cosmos loaded | 82 GiB used; 38 GiB available |
 
 ## Wi-Fi-off test
 
