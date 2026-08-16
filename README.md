@@ -74,6 +74,7 @@ python -m pytest -q
 - [Spark measurements](docs/SPARK_STORY.md)
 - [Core API and operations](docs/CORE.md)
 - [P3 model/agent handoff](docs/P3_HANDOFF.md)
+- [Nemotron 3.5 Lightning NVFP4 + DSpark wrapper](docs/LIGHTNING_DSPARK.md)
 - [P4 VLM setup](docs/VSS_SETUP.md)
 
 ## Honest limitations
