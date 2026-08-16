@@ -1,6 +1,6 @@
 __pycache__/
 *.pyc
-runs/*.sqlite
+runs/*.sqlite*
 runs/evidence/*
 runs/agent_out/*
 !runs/evidence/.gitkeep

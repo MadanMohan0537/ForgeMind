@@ -15,6 +15,7 @@
   header h1{margin:0;font:700 15px/1 var(--mono);letter-spacing:.12em} header h1 small{font-weight:400;letter-spacing:0;color:#B9C1CC;margin-left:10px}
   .runbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font:12px var(--mono)}
   .runbar .pill{padding:4px 8px;border:1px solid #6B7480;border-radius:2px} .pill.on{border-color:#fff;background:#fff;color:var(--ink)}
+  .pill.good{border-color:#75B798;color:#B7F7D1}.pill.bad{border-color:#FF8787;color:#FFC9C9}
   button{font:inherit;padding:7px 11px;border:1px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer;border-radius:2px}
   button:hover{background:#F6F7F5} button.dark{background:var(--ink);color:#fff;border-color:#fff} button.hold{background:var(--hold);border-color:var(--hold);color:#fff}
   button:focus-visible{outline:3px solid var(--wait);outline-offset:2px}
@@ -46,6 +47,8 @@
   select,input{font:inherit;padding:6px;border:1px solid var(--line);border-radius:2px;background:#fff}
   .stamp{font:700 11px var(--mono);letter-spacing:.1em;color:var(--deny);border:2px solid var(--deny);padding:2px 6px;display:inline-block;transform:rotate(-2deg)}
   .muted{color:var(--muted)} .cmp td.pos{color:var(--ok)} .cmp td.neg{color:var(--hold)}
+  .stationbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}.stationbar a{color:var(--info);font:600 12px var(--mono)}
+  #notice{min-height:20px;font:12px var(--mono);color:var(--hold);margin-top:6px}
   @media (max-width:900px){main{grid-template-columns:1fr;height:auto}}
   @media (prefers-reduced-motion:no-preference){.ticket{transition:border-color .3s}}
 </style>
@@ -54,6 +57,7 @@
 <header>
   <h1>FORGEMIND<small>local process scientist · DGX Spark</small></h1>
   <div class="runbar">
+    <span class="pill" id="coreconn">core connecting</span>
     <span class="pill" id="runpill">no run</span>
     <button class="dark" onclick="startRun('baseline')">Start baseline</button>
     <button class="dark" onclick="startRun('recovery')">Start recovery</button>
@@ -75,6 +79,8 @@
       <h2>Now</h2>
       <div id="now" class="now">Waiting for a kit…</div>
       <div class="kv" id="nowkv"></div>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <nav class="stationbar" aria-label="Station screens"><a href="/station/alice">Alice</a><a href="/station/bob">Bob</a><a href="/station/charlie">Charlie</a><a href="/station/recovery">Recovery</a></nav>
     </div>
     <div class="card">
       <h2>Recovery station · actuator</h2>
@@ -99,13 +105,14 @@
     <div class="panel card" id="p-analysis">
       <div class="row"><select id="arun"></select>
         <button class="dark" onclick="genHyp()">Generate hypotheses</button><button onclick="genExp()">Propose experiment</button>
+        <button onclick="loadOpenData()">AI4I open data</button>
         <span class="muted">verify</span><select id="vbefore"></select><span>→</span><select id="vafter"></select><button onclick="verify()">Verify</button>
         <span id="abusy" class="muted"></span></div>
       <div id="hyps"><span class="muted">Generate hypotheses after a run has ended.</span></div>
-      <div id="exp"></div><div id="ver"></div>
+      <div id="exp"></div><div id="ver"></div><div id="openData"></div>
     </div>
     <div class="panel card" id="p-contain">
-      <p class="muted" style="margin:0 0 8px">Attempts by the sandboxed analyst that OpenShell policy blocked. The agent can read and think; only the deterministic governor can move anything.</p>
+      <p class="muted" style="margin:0 0 8px">Reported policy-denial events. A row is evidence only after the team verifies the attempted action had no side effect. The current host-agent fallback is not an OpenShell containment claim.</p>
       <table><thead><tr><th>t</th><th>agent</th><th>attempted</th><th>result</th></tr></thead><tbody id="denybody"><tr><td colspan=4 class="muted">No denials logged yet.</td></tr></tbody></table>
     </div>
   </section>
@@ -118,6 +125,8 @@ const _tok = new URLSearchParams(location.search).get('token'); if(_tok) localSt
 const post = (url, body) => fetch(url, {method:'POST',
   headers:{'Content-Type':'application/json', ...(localStorage.forgeToken?{'X-Forge-Token':localStorage.forgeToken}:{})},
   ...(body!==undefined?{body:JSON.stringify(body)}:{})});
+const setConn=(text,ok)=>{ const e=$('#coreconn'); e.textContent=text; e.className='pill '+(ok?'good':'bad'); };
+const notice=text=>{ $('#notice').textContent=text||''; };
 const feedDefault=`http://${host}:8150/video.mjpg`; $('#feedurl').value=localStorage.feed||feedDefault; setFeed();
 function setFeed(){ localStorage.feed=$('#feedurl').value; $('#feed').src=$('#feedurl').value; }
 let run={run_id:null,mode:null}, kits={}, events=[], runs=[];
@@ -146,24 +155,29 @@ function renderNow(){ const ks=Object.values(kits); const active = ks.filter(k=>
 function renderRobot(r){ $('#robot').innerHTML=`<b>state</b><span>${r.state||'?'}</span><b>adapter</b><span>${r.adapter||'?'}</span><b>instruction</b><span>${r.instruction||'—'}</span><b>last</b><span>${r.last_action? (r.last_action.part+' → '+r.last_action.result+' ('+(r.last_action.seconds||'?')+'s)') : '—'}</span>`; }
 async function refreshRuns(){ runs = await (await fetch('/runs')).json(); const opts = runs.map(r=>`<option value="${r.run_id}">${r.run_id}</option>`).join('');
   for(const id of ['mrun','mbefore','mafter','arun','vbefore','vafter']){ const s=$('#'+id); const cur=s.value; s.innerHTML=opts; if([...s.options].some(o=>o.value===cur)) s.value=cur; } }
-async function refreshState(){ try{ const s=await (await fetch('/state')).json(); run=s.run; renderRun(); renderRobot(s.robot||{}); $('#tele').textContent=`fps ${s.telemetry.fps??'–'} · clear ${s.telemetry.workspace_clear} · queue ${JSON.stringify(s.telemetry.queue||{})}`; $('#models').textContent=`planner ${s.planner} · ${s.llm_model}${s.fast_model!==s.llm_model?' + '+s.fast_model:''}`; }catch(e){} }
-function connect(){ const ws=new WebSocket(`ws://${location.host}/ws`); ws.onmessage=m=>{ const d=JSON.parse(m.data);
+async function refreshState(){ try{ const r=await fetch('/state'); if(!r.ok) throw new Error(`HTTP ${r.status}`); const s=await r.json(); run=s.run; renderRun(); renderRobot(s.robot||{}); $('#tele').textContent=`fps ${s.telemetry.fps??'–'} · clear ${s.telemetry.workspace_clear} · queue ${JSON.stringify(s.telemetry.queue||{})}`; $('#models').textContent=`planner ${s.planner} · ${s.llm_model}${s.fast_model!==s.llm_model?' + '+s.fast_model:''}`; setConn('core live',true); }catch(e){ setConn('core offline',false); } }
+function connect(){ const scheme=location.protocol==='https:'?'wss':'ws'; const ws=new WebSocket(`${scheme}://${location.host}/ws`); ws.onopen=()=>setConn('core live',true); ws.onmessage=m=>{ const d=JSON.parse(m.data);
   if(d.type==='snapshot'){ run=d.run; kits={}; d.kits.forEach(k=>kits[k.kit_id]=k); events=d.events; renderRun(); renderKits(); renderEvents(); renderNow(); }
   else if(d.type==='event'){ if(d.event.run_id!==run.run_id && d.event.event==='RUN_STARTED'){ run={run_id:d.event.run_id,mode:d.event.payload.mode}; kits={}; events=[]; renderRun(); refreshRuns(); }
     events.push(d.event); if(d.kit) kits[d.kit.kit_id]=d.kit; renderKits(); renderEvents(); renderNow(); }
   else if(d.type==='telemetry'){ $('#tele').textContent=`fps ${d.telemetry.fps??'–'} · clear ${d.telemetry.workspace_clear} · queue ${JSON.stringify(d.telemetry.queue||{})}`; } };
-  ws.onclose=()=>setTimeout(connect,1500); }
-async function startRun(mode){ await post('/runs/start',{mode}); await refreshRuns(); await refreshState(); }
-async function endRun(){ const r=await post('/runs/end'); const j=await r.json(); if(r.ok){ alert(`Run ended: ${j.ended}\n${JSON.stringify(j.metrics,null,1)}`); } await refreshRuns(); await refreshState(); }
-async function estop(){ await post('/robot/stop'); refreshState(); }
+  ws.onclose=()=>{ setConn('core reconnecting',false); setTimeout(connect,1500); }; }
+async function action(url,body){ notice(''); try{ const r=await post(url,body); const data=await r.json().catch(()=>({})); if(!r.ok) throw new Error(data.detail||`HTTP ${r.status}`); return data; }catch(e){ notice(`Action failed: ${e.message}`); return null; } }
+async function startRun(mode){ if(await action('/runs/start',{mode})){ await refreshRuns(); await refreshState(); } }
+async function endRun(){ const j=await action('/runs/end'); if(j){ alert(`Run ended: ${j.ended}\n${JSON.stringify(j.metrics,null,1)}`); await refreshRuns(); await refreshState(); } }
+async function estop(){ if(await action('/robot/stop')) refreshState(); }
 async function loadMetrics(){ const id=$('#mrun').value; if(!id) return; const m=await (await fetch('/metrics/'+id)).json(); $('#mbody').innerHTML=Object.entries(m).map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='object'?JSON.stringify(v):v??'–'}</td></tr>`).join(''); }
 async function loadCompare(){ const c=await (await fetch(`/metrics/compare/?before=${$('#mbefore').value}&after=${$('#mafter').value}`)).json();
   const good=new Set(['correct_products','verified_recoveries','throughput_per_min']); $('#cbody').innerHTML=c.rows.map(r=>{ const cls=r.delta==null?'':(good.has(r.metric)? (r.delta>0?'pos':r.delta<0?'neg':'') : (r.delta<0?'pos':r.delta>0?'neg':'')); return `<tr><td>${r.metric}</td><td>${r.before??'–'}</td><td>${r.after??'–'}</td><td class="${cls}">${r.delta??'–'}</td></tr>`; }).join('');
   $('#ir').textContent = c.intervention_reduction!=null? `Intervention reduction: ${(c.intervention_reduction*100).toFixed(0)}% fewer actuator interventions after the process change.` : ''; }
 function renderAnalysis(a){ const hs=a.hypotheses; $('#hyps').innerHTML = hs? `<p><b>${hs.summary||''}</b></p>`+hs.hypotheses.map(h=>`<div class="hyp"><h3>${h.id} · ${h.title} <span class="muted" style="font-weight:400">· ${h.status}</span></h3><div>${h.explanation}</div><div class="conf"><i style="width:${Math.round(h.confidence*100)}%"></i></div><div class="ids">confidence ${(h.confidence*100).toFixed(0)}% · supports #${h.supporting_event_ids.join(', #')||'—'} · contradicts #${h.contradicting_event_ids.join(', #')||'—'}</div></div>`).join('') : '<span class="muted">No hypotheses yet.</span>';
   const e=a.experiment; $('#exp').innerHTML = e? `<div class="hyp" style="border-left:6px solid var(--info)"><h3>Recommended experiment</h3><div><b>Change:</b> ${e.change}</div><div><b>Keep unchanged:</b> ${(e.keep_unchanged||[]).join('; ')}</div><div><b>Why:</b> ${e.reason}</div><div><b>Tests:</b> ${e.tests_hypothesis_id} · <b>Expect:</b> ${e.expected_observation} · <b>Watch:</b> ${e.metric_to_watch}</div></div>` : '';
-  const v=a.verification; $('#ver').innerHTML = v? `<div class="hyp" style="border-left:6px solid var(--ok)"><h3>Verification ${v.before} → ${v.after}</h3>`+v.verdicts.map(x=>`<div><b>${x.hypothesis_id}: ${x.verdict.toUpperCase()}</b> — ${x.explanation}</div>`).join('')+`</div>` : ''; }
+  const v=a.verification; $('#ver').innerHTML = v? `<div class="hyp" style="border-left:6px solid var(--ok)"><h3>Verification ${v.before} → ${v.after}</h3>`+v.verdicts.map(x=>`<div><b>${x.hypothesis_id}: ${x.verdict.toUpperCase()}</b> — ${x.explanation}</div>`).join('')+`</div>` : '';
+  const od=a.open_data, stats=od&&od.stats, verdicts=(od&&od.verdicts)||[];
+  $('#openData').innerHTML = od? `<div class="hyp" style="border-left:6px solid var(--wait)"><h3>Open data · ${od.dataset||'AI4I 2020'}</h3><div>${stats&&stats.rows?stats.rows.toLocaleString():'—'} rows · failure rate ${stats&&stats.failure_rate!=null?(stats.failure_rate*100).toFixed(2)+'%':'—'}</div><table><thead><tr><th>hypothesis</th><th>inside</th><th>outside</th><th>lift</th><th>verdict</th></tr></thead><tbody>${verdicts.map(x=>`<tr><td>${x.id}</td><td>${x.failure_rate_inside!=null?(x.failure_rate_inside*100).toFixed(2)+'%':'—'}</td><td>${x.failure_rate_outside!=null?(x.failure_rate_outside*100).toFixed(2)+'%':'—'}</td><td>${x.lift??'—'}</td><td>${(x.verdict||'').replace('_',' ')}</td></tr>`).join('')}</tbody></table></div>` : '';
+}
 async function loadAnalysis(){ const id=$('#arun').value; if(!id) return; renderAnalysis(await (await fetch('/analysis/'+id)).json()); }
+async function loadOpenData(){ renderAnalysis(await (await fetch('/analysis/ai4i_2020')).json()); }
 async function genHyp(){ $('#abusy').textContent='thinking…'; const id=$('#arun').value; const r=await post('/analysis/hypotheses/'+id); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); loadAnalysis(); }
 async function genExp(){ $('#abusy').textContent='planning…'; const id=$('#arun').value; const r=await post('/analysis/experiment/'+id); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); loadAnalysis(); }
 async function verify(){ $('#abusy').textContent='verifying…'; const r=await post('/analysis/verify',{before:$('#vbefore').value,after:$('#vafter').value}); $('#abusy').textContent=r.ok?'':'error: '+await r.text(); $('#arun').value=$('#vafter').value; loadAnalysis(); }
