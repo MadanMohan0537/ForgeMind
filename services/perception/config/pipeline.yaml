@@ -13,7 +13,7 @@ source:
   loop: true          # if true and kind=file, loop forever (replay fallback mode)
 
 core:
-  events_url: "http://127.0.0.1:5001/events"
+  events_url: "http://127.0.0.1:8100/events"
   timeout_seconds: 2
   retry_backoff_seconds: [1, 2, 5]
   # if Core is unreachable, events queue to this file instead of being dropped

@@ -58,7 +58,7 @@ class PerceptionPipeline:
 
         core_cfg = self.config.get("core", {})
         self.event_client = EventClient(
-            events_url=core_cfg.get("events_url", "http://127.0.0.1:5001/events"),
+            events_url=core_cfg.get("events_url", "http://127.0.0.1:8100/events"),
             timeout_seconds=core_cfg.get("timeout_seconds", 2),
             retry_backoff_seconds=core_cfg.get("retry_backoff_seconds", [1, 2, 5]),
             offline_queue_file=core_cfg.get("offline_queue_file", "runs/offline_event_queue.jsonl"),

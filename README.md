@@ -35,18 +35,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-bash scripts/serve_cosmos.sh
 bash scripts/start_mediamtx.sh &
-
-SOURCE=rtsp://127.0.0.1:8554/line \
-LLM_BASE_URL=http://127.0.0.1:11434/v1 \
-LLM_MODEL=nemotron-3.5-lightning:latest \
-LLM_FAST_MODEL=nemotron-3.5-lightning:latest \
-LLM_THINK_MODE=ollama \
-VLM_URL=http://127.0.0.1:8001/v1 \
-VLM_MODEL=cosmos \
-bash scripts/start_all.sh
+MODEL_RUNTIME=ollama ROBOT_ADAPTER=human REQUIRE_VLM=0 bash scripts/start_dgx.sh
 ```
+
+Set `REQUIRE_VLM=1` only after `bash scripts/serve_cosmos.sh` reports ready. See the
+[DGX build and physical validation runbook](docs/DGX_RUNBOOK.md) for accelerated vLLM,
+camera acceptance, ten-minute stability monitoring, and comparable trial capture.
 
 Open:
 
@@ -69,6 +64,7 @@ python -m pytest -q
 ## Demo and submission
 
 - [Demo script](docs/DEMO_SCRIPT.md)
+- [DGX build and physical validation runbook](docs/DGX_RUNBOOK.md)
 - [Physical rig and rehearsal](docs/PHYSICAL_RIG.md)
 - [Submission checklist](docs/SUBMISSION_CHECKLIST.md)
 - [Spark measurements](docs/SPARK_STORY.md)

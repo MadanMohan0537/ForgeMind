@@ -18,7 +18,7 @@ import os
 import time
 import threading
 import queue
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -32,8 +32,20 @@ class Event:
     station_id: str
     payload: Dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Translate the standalone P1 event into the production Core contract."""
+        payload = dict(self.payload)
+        payload.setdefault("timestamp", self.timestamp)
+        payload.setdefault("zone", self.zone)
+        payload.setdefault("station_id", self.station_id)
+        return {
+            "event": self.type,
+            "payload": payload,
+            "source": "perception",
+        }
+
     def to_json(self) -> str:
-        return json.dumps(asdict(self))
+        return json.dumps(self.to_dict())
 
 
 class EventClient:
@@ -110,7 +122,19 @@ class EventClient:
         sent = 0
         for line in lines:
             data = json.loads(line)
-            event = Event(**data)
+            # New queue entries use Core's wire contract. Keep accepting the
+            # original P1 shape so an upgrade does not strand queued evidence.
+            if "event" in data:
+                payload = dict(data.get("payload", {}))
+                event = Event(
+                    type=data["event"],
+                    timestamp=float(payload.pop("timestamp", time.time())),
+                    zone=str(payload.pop("zone", "unknown")),
+                    station_id=str(payload.pop("station_id", "unknown")),
+                    payload=payload,
+                )
+            else:
+                event = Event(**data)
             try:
                 resp = requests.post(
                     self.events_url,
