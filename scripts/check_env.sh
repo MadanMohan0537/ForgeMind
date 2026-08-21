@@ -22,7 +22,14 @@ check "Ollama"            "http://${IP}:11434/api/tags"
 check "core"              "http://${IP}:8100/health"
 check "perception"        "http://${IP}:8150/health"
 check "robot"             "http://${IP}:8200/robot/status"
-check "mediamtx (RTSP)"   "http://${IP}:8888/"
+printf "%-28s" "mediamtx (RTSP)"
+# HLS root often 404 with no publishers; treat any HTTP answer or open :8554 as up.
+if curl -sS -m 3 -o /dev/null "http://${IP}:8888/" 2>/dev/null \
+   || (echo >/dev/tcp/${IP}/8554) 2>/dev/null; then
+  echo "OK   rtsp://${IP}:8554/line"
+else
+  echo "DOWN rtsp://${IP}:8554/line"
+fi
 
 echo
 echo "GPU:"

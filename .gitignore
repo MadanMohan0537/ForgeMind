@@ -8,5 +8,13 @@ data/open/*.zip
 data/open/*.csv
 scripts/mediamtx*
 .venv/
+.venv-win/
+pip-metadata-*/
+pip-unpack-*/
+pip-build-tracker-*/
+pip-ephem-wheel-cache-*/
+pip-install-*/
+.pytest_cache/
 pytest-of-*/
+work/
 logs/

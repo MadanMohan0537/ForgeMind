@@ -6,7 +6,7 @@
 #    ffmpeg can rewrap it to RTSP for VSS (command at the bottom).
 set -euo pipefail
 cd "$(dirname "$0")"
-ARCH=$(uname -m); case "$ARCH" in aarch64|arm64) A=linux_arm64v8;; x86_64) A=linux_amd64;; *) echo "arch $ARCH?"; exit 1;; esac
+ARCH=$(uname -m); case "$ARCH" in aarch64|arm64) A=linux_arm64;; x86_64) A=linux_amd64;; *) echo "arch $ARCH?"; exit 1;; esac
 if [ ! -x ./mediamtx ]; then
   VER="${MEDIAMTX_VERSION:-v1.12.3}"
   URL="https://github.com/bluenviron/mediamtx/releases/download/${VER}/mediamtx_${VER}_${A}.tar.gz"

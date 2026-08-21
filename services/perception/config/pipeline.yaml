@@ -1,0 +1,35 @@
+# pipeline.yaml — runtime wiring. Change these, not the code.
+
+recipe_file: config/recipe.yaml
+
+source:
+  # kind: rtsp | http | file | synthetic
+  #   rtsp      -> rtsp://<phone-ip>:8554/live
+  #   http      -> http://<phone-ip>:8080/video   (IP Webcam MJPEG fallback)
+  #   file      -> path to a video file (used for golden.mp4 replay)
+  #   synthetic -> generates frames in-process, no camera needed (for dev/testing)
+  kind: synthetic
+  uri: ""
+  loop: true          # if true and kind=file, loop forever (replay fallback mode)
+
+core:
+  events_url: "http://127.0.0.1:8100/events"
+  timeout_seconds: 2
+  retry_backoff_seconds: [1, 2, 5]
+  # if Core is unreachable, events queue to this file instead of being dropped
+  offline_queue_file: runs/offline_event_queue.jsonl
+
+vlm:
+  # left empty until P4 hands you a real VLM_URL — pipeline runs fine without it
+  url: ""
+  timeout_seconds: 3
+  alerts:
+    - "kit placed in inspection zone"
+    - "hand in robot zone"
+
+golden_recording:
+  enabled: false
+  output_path: runs/golden.mp4
+  fps: 15
+
+station_id: "station_1"
