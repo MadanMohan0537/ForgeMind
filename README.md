@@ -6,7 +6,6 @@
 </p>
 
 <p align="center">
-  <a href="#license"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License"></a>
   <a href="https://www.nvidia.com"><img src="https://img.shields.io/badge/NVIDIA-DGX%20Spark-76b900?style=flat-square&logo=nvidia" alt="NVIDIA DGX Spark"></a>
   <a href="https://fastapi.tiangolo.com"><img src="https://img.shields.io/badge/Framework-FastAPI-009688?style=flat-square&logo=fastapi" alt="FastAPI"></a>
   <a href="https://opencv.org"><img src="https://img.shields.io/badge/Vision-OpenCV%20%2B%20Cosmos-5c3ee8?style=flat-square&logo=opencv" alt="OpenCV"></a>
@@ -14,6 +13,14 @@
 </p>
 
 ---
+
+## Choose the rehearsal before the hardware demo
+
+Start by reading [the core operations guide](docs/CORE.md) and [demo script](docs/DEMO_SCRIPT.md). The [service launcher](scripts/start_all.sh) starts core, robot and perception services; it does not install or launch the model servers. Its defaults expect local OpenAI-compatible LLM and VLM endpoints.
+
+The synthetic runner sends events to a running core service; it is not a standalone offline simulation. Start the service stack first, then run the baseline example below. Recovery scenarios also depend on the configured planner and robot adapter. With the human adapter, operator confirmation is part of the workflow.
+
+Treat this as a research/demo assembly-line system. Event replay and deterministic governance provide inspectable behavior, but they do not establish safety certification for a physical robot or prove general causal diagnosis.
 
 ## 📌 Overview
 
@@ -56,7 +63,7 @@ flowchart TD
 - **🛡️ Deterministic Safety Governor:** Sits strictly between model proposals and actuation. The AI never receives raw joint-control or unverified motor authority.
 - **🤖 Governed Teleoperation (`IsaacHumanArm`):** Dispatches recovery requests to an operator console where humans teleoperate robotic arms inside **NVIDIA Isaac Sim**.
 - **📊 Code-Verified Metrics:** Replay-derived throughput, defect escapes, recovery time, cycle times, and queue latency computed directly from the event log.
-- **🔬 Benchmarked Dataset:** Analyzed and validated against 10,000 rows of the UCI AI4I Predictive Maintenance dataset.
+- **🔬 Evaluation artifacts:** Review the committed `runs/` artifacts and runbook for the scope and provenance of demonstrations; they do not establish general industrial validation.
 
 ---
 
@@ -80,7 +87,7 @@ pip install -r requirements.txt
 
 # Launch MediaMTX and DGX Services
 bash scripts/start_mediamtx.sh &
-MODEL_RUNTIME=ollama ROBOT_ADAPTER=human REQUIRE_VLM=0 bash scripts/start_dgx.sh
+PLANNER=rule ROBOT_ADAPTER=human bash scripts/start_all.sh
 ```
 
 ### Synthetic Rehearsal (No Camera Required)
@@ -106,13 +113,13 @@ python -m pytest -q
 ## 📄 Documentation
 
 - [Demo Script](docs/DEMO_SCRIPT.md)
-- [DGX Build & Validation Runbook](docs/DGX_RUNBOOK.md)
+- [Build plan](docs/PLAN.md)
 - [Physical Rig & Rehearsal](docs/PHYSICAL_RIG.md)
 - [Core API & Operations](docs/CORE.md)
-- [Nemotron 3.5 MoE Setup](docs/LIGHTNING_DSPARK.md)
+- [Video search setup](docs/VSS_SETUP.md)
 
 ---
 
-## 📄 License
+## License
 
-MIT License — see [LICENSE](LICENSE) for details.
+No license file is currently included. Add an explicit license before redistributing implementation code or data.
